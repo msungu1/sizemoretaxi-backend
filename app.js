@@ -19,7 +19,8 @@ app.use(cors({
   origin: "*",
   credentials: true
 }))
-
+app.get("/", (req, res) => res.send("Sizemore Taxi API is running"));
+app.use("/api/auth", AuthRoutes);
 app.use("/api/auth", AuthRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/trips", tripRoutes);
