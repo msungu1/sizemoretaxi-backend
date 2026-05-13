@@ -142,10 +142,12 @@ export const loginUser = async (req, res) => {
   if (!identifier || !password) return response(res, 400, "Credentials required.");
 
   try {
-    const user = await User.findOne({
-      $or: [{ email: identifier }, { phone: identifier }]
-    });
-
+    // const user = await User.findOne({
+    //   $or: [{ email: identifier }, { phone: identifier }]
+    // });
+const user = await User.findOne({
+  $or: [{ email: identifier.trim() }, { phone: identifier.trim() }]
+});
     if (!user) return response(res, 404, "User not found.");
 
     if (user.isBlocked)
@@ -158,6 +160,8 @@ export const loginUser = async (req, res) => {
 
     const userObj = user.toObject()
 
+console.log("Searching for:", identifier.trim());
+console.log("User found in DB:", user ? "YES" : "NO");
     const { password: _, ...userWithoutPassword } = userObj
 
     return response(res, 200, "Login successful", {
