@@ -13,19 +13,19 @@ const tripSchema = new mongoose.Schema(
         },
 
         pickupLocation: {
-            lat: Number,
-            lng: Number,
-            address: String,
+            lat: { type: Number, required: true },
+            lng: { type: Number, required: true },
+            address: { type: String, required: true },
         },
         dropoffLocation: {
-            lat: Number,
-            lng: Number,
-            address: String,
+            lat: { type: Number, required: true },
+            lng: { type: Number, required: true },
+            address: { type: String, required: true },
         },
 
         status: {
             type: String,
-            enum: ["pending", "assigned", "requested", "accepted", "in_progress", "completed", "cancelled"],
+            enum: ["pending", "requested", "assigned", "accepted", "in_progress", "completed", "cancelled"],
             default: "pending"
         },
 
