@@ -45,8 +45,7 @@ async function getDistanceAndDuration(orig, dest) {
 
 const normalizeLocation = (loc) => ({
     lat: loc.lat ?? loc.latitude,
-    lng: loc.lng ?? loc.longitude,
-    address: loc.address ?? loc.formatted_address ?? loc.name ?? ""
+    lng: loc.lng ?? loc.longitude
 })
 
 function overlaps(aStart, aEnd, bStart, bEnd) {
@@ -115,9 +114,6 @@ export const getTripOptions = async (req, res) => {
         const rider = await User.findById(riderId);
         if (!rider) return response(res, 404, "Rider not found.");
 
-        const pickup = normalizeLocation(pickupLocation);
-        const dropoff = normalizeLocation(dropoffLocation);
-
         // calculate distance & duration
         const route = await getDistanceAndDuration(pickupLocation, dropoffLocation);
 
@@ -126,9 +122,7 @@ export const getTripOptions = async (req, res) => {
 
         return response(res, 200, "Vehicle options generated.", {
             route,
-            vehicles, // list of 4 vehicle types + pricing
-            pickupLocation: pickup,
-            dropoffLocation: dropoff
+            vehicles // list of 4 vehicle types + pricing
         });
 
     } catch (err) {
@@ -150,17 +144,11 @@ export const confirmTrip = async (req, res) => {
             return response(res, 400, "Missing required fields.");
         }
 
-        const pickup = normalizeLocation(pickupLocation);
-        const dropoff = normalizeLocation(dropoffLocation);
-
-        if (!pickup.address || !dropoff.address) {
-            return response(res, 400, "Pickup and dropoff address are required.");
-        }
-
         const rider = await User.findById(riderId);
         if (!rider) return response(res, 404, "Rider not found.");
 
-
+        const pickup = normalizeLocation(pickupLocation);
+        const dropoff = normalizeLocation(dropoffLocation);
         const sched = new Date(scheduledTime);
 
         const route = await getDistanceAndDuration(pickup, dropoff);
@@ -185,8 +173,6 @@ export const confirmTrip = async (req, res) => {
             rider: { name: rider.name, phone: rider.phone },
             pickupLocation: pickup,
             dropoffLocation: dropoff,
-            pickupLabel: pickup.address,
-            dropoffLabel: dropoff.address,
             fare: `KES ${trip.fare}`,
             vehicleType,
             distance: route.distanceText,
@@ -209,51 +195,27 @@ export const assignTrip = async (req, res) => {
         const driver = await User.findById(driverId);
         if (!driver) return response(res, 404, "Driver not found.");
 
-        if (driver.role !== "driver") {
-            return response(res, 400, "User is not a driver.");
-        }
-
-        // ✅ prevent driver double-booking
-        const activeTrip = await Trip.findOne({
-            driver: driverId,
-            status: { $in: ["assigned", "accepted", "in_progress"] }
-        });
-
-        if (activeTrip) {
-            return response(res, 409, "Driver already has an active trip.");
-        }
-
         const trip = await Trip.findOneAndUpdate(
             { _id: tripId, status: "requested" },
-            { status: "assigned", driver: driverId },
+            { status: "accepted", driver: driverId },
             { new: true }
         );
 
-        if (!trip) {
-            return response(res, 409, "Trip not available (already assigned or cancelled).");
-        }
+        if (!trip) return response(res, 409, "Trip not available (already assigned or cancelled).");
 
-        // optional: route info
-        const route = await getDistanceAndDuration(
-            trip.pickupLocation,
-            trip.dropoffLocation
-        );
-
+        // Notify the assigned driver
         emitToUser(driverId, "ride_assigned", {
             tripId: trip._id.toString(),
             pickupLocation: trip.pickupLocation,
             dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation.address,
-            dropoffLabel: trip.dropoffLocation.address,
             fare: `KES ${trip.fare}`,
             vehicleType: trip.vehicleType,
-            distance: route.distanceText,
-            duration: route.durationText,
             scheduledTime: trip.scheduledTime,
         });
 
-        emitToUser(trip.rider.toString(), "ride_assigned", {
-            tripId: trip._id.toString(),
+        // Notify the rider their trip has a driver
+        emitToUser(trip.rider.toString(), "ride_accepted", {
+            tripId: trip._id,
             driver: {
                 name: driver.name,
                 phone: driver.phone,
@@ -262,6 +224,7 @@ export const assignTrip = async (req, res) => {
             }
         });
 
+        console.log(`✅ Trip ${tripId} assigned to driver ${driver.name}`);
         return response(res, 200, "Trip assigned to driver.", { trip });
 
     } catch (err) {
@@ -274,42 +237,32 @@ export const cancelTrip = async (req, res) => {
     const { tripId, reason } = req.body;
 
     try {
-        const finalReason = reason?.trim() || "Cancelled by admin";
+        const trip = await Trip.findById(tripId);
+        if (!trip) return response(res, 404, "Trip not found.");
 
-        const trip = await Trip.findOneAndUpdate(
-            {
-                _id: tripId,
-                status: { $nin: ["completed", "cancelled"] }
-            },
-            {
-                status: "cancelled",
-                cancellationReason: finalReason,
-                cancelledBy: "admin",
-                cancelledAt: new Date()
-            },
-            { new: true }
-        );
-
-        if (!trip) {
+        if (["completed", "cancelled"].includes(trip.status)) {
             return response(res, 400, "Trip is already completed or cancelled.");
         }
 
+        trip.status = "cancelled";
+        trip.cancellationReason = reason || "Cancelled by admin";
+        await trip.save();
+
         const payload = {
-            tripId: trip._id.toString(),
+            tripId,
             status: "cancelled",
             reason: trip.cancellationReason,
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
         };
 
+        // Notify rider
         emitToUser(trip.rider.toString(), "trip_cancelled", payload);
 
+        // Notify driver if one was assigned
         if (trip.driver) {
             emitToUser(trip.driver.toString(), "trip_cancelled", payload);
         }
 
+        console.log(`🚫 Trip ${tripId} cancelled by admin.`);
         return response(res, 200, "Trip cancelled.", { trip });
 
     } catch (err) {
@@ -320,34 +273,17 @@ export const cancelTrip = async (req, res) => {
 
 export const getAllTrips = async (req, res) => {
     try {
-        const { status, page = 1, limit = 20 } = req.query;
-
-        const validStatuses = ["pending", "requested", "assigned", "accepted", "in_progress", "completed", "cancelled"];
-
-        if (status && !validStatuses.includes(status)) {
-            return response(res, 400, "Invalid status value.");
-        }
+        const { status } = req.query;
 
         const filter = {};
         if (status) filter.status = status;
 
-        const skip = (page - 1) * limit;
-
         const trips = await Trip.find(filter)
             .sort({ scheduledTime: -1 })
-            .skip(skip)
-            .limit(Number(limit))
-            .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime")
             .populate("rider", "name phone")
-            .populate("driver", "name phone carModel carNumber");
+            .populate("driver", "-password");
 
-        const formattedTrips = trips.map(trip => ({
-            ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-        }));
-
-        return response(res, 200, "Trips fetched.", formattedTrips);
+        return response(res, 200, "Trips fetched.", trips);
 
     } catch (err) {
         console.error("❌ getAllTrips error:", err);
@@ -408,56 +344,41 @@ export const getAvailableDrivers = async (req, res) => {
         const { tripId } = req.query;
         if (!tripId) return response(res, 400, "tripId is required.");
 
-        const allDrivers = await User.find({ role: "driver" });
-
         const trip = await Trip.findById(tripId);
         if (!trip) return response(res, 404, "Trip not found.");
 
-        const { vehicleType, scheduledTime, durationMinutes } = trip;
+        const { vehicleType, scheduledTime } = trip;
 
-        const tripStart = scheduledTime ? new Date(scheduledTime) : new Date();
-        const tripEnd = new Date(tripStart.getTime() + (durationMinutes || 60) * 60 * 1000);
+        // SAFETY: Handle cases where scheduledTime might be missing/null
+        const baseTime = scheduledTime ? new Date(scheduledTime) : new Date();
 
-        console.log("⏱ Trip start:", tripStart, "Trip end:", tripEnd);
+        const windowStart = new Date(baseTime.getTime() - 60 * 60 * 1000);
+        const windowEnd = new Date(baseTime.getTime() + 60 * 60 * 1000);
 
-        // Find busy drivers
-        const busyDrivers = await Trip.find({
+        let busyDrivers = await Trip.find({
             status: { $in: ["assigned", "in_progress"] },
-            driver: { $ne: null },
-            scheduledTime: { $exists: true },
-            $or: [
-                {
-                    $expr: {
-                        $and: [
-                            { $lt: ["$scheduledTime", tripEnd] },
-                            { $gt: [{ $add: ["$scheduledTime", { $multiply: ["$durationMinutes", 60000] }] }, tripStart] },
-                        ],
-                    },
-                },
-            ],
+            scheduledTime: { $gte: windowStart, $lte: windowEnd }
         }).distinct("driver");
 
-        const busyDriverIds = busyDrivers.map((id) => new mongoose.Types.ObjectId(id));
+        // FIX: Added 'new' keyword to avoid the 500 error
+        const busyDriverIds = busyDrivers
+            .filter(id => id)
+            .map(id => new mongoose.Types.ObjectId(id));
 
-        // Case-insensitive vehicle filter
         const vehicleFilter = vehicleType
-            ? { carType: { $regex: vehicleType, $options: "i" } }
+            ? { carType: { $regex: new RegExp(`^${vehicleType}$`, "i") } }
             : {};
-        console.log("🚘 Vehicle filter applied:", vehicleFilter);
-
         const drivers = await User.find({
             role: "driver",
             ...vehicleFilter,
-            _id: { $nin: busyDriverIds },
+            _id: { $nin: busyDriverIds }
         }).select("-password");
 
-
-        const driversWithLocation = drivers.map((driver) => ({
+        const driversWithLocation = drivers.map(driver => ({
             ...driver.toObject(),
             currentLocation: driverLocations.get(driver._id.toString()) || null,
-            isOnline: driverLocations.has(driver._id.toString()),
+            isOnline: driverLocations.has(driver._id.toString())
         }));
-
 
         return response(res, 200, "Available drivers fetched.", driversWithLocation);
 
@@ -475,47 +396,18 @@ export const startTrip = async (req, res) => {
             return response(res, 400, "Invalid tripId.");
         }
 
-        const trip = await Trip.findOneAndUpdate(
-            {
-                _id: tripId,
-                status: { $in: ["assigned", "accepted"] }
-            },
-            {
-                status: "in_progress",
-                startTime: new Date()
-            },
-            { new: true }
-        );
+        const trip = await Trip.findById(tripId);
+        if (!trip) return response(res, 404, "Trip not found.");
 
-        if (!trip) {
-            return response(res, 400, "Trip cannot be started in its current state.");
-        }
+        trip.status = "in_progress";
+        trip.startTime = new Date();
+        await trip.save();
 
-        // ✅ Optional: verify driver ownership if you have auth
-        // if (trip.driver.toString() !== req.user.id.toString()) {
-        //     return response(res, 403, "Not authorized.");
-        // }
-
-        const payload = {
-            tripId: trip._id.toString(),
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-            startTime: trip.startTime
-        };
-
-        emitToUser(trip.rider.toString(), "trip_started", payload);
-
-        emitToUser(trip.driver.toString(), "trip_started", {
-            ...payload,
-            startTracking: true
-        });
-
-        console.log(`🚗 Trip ${tripId} started`);
+        emitToUser(trip.rider?.toString(), "trip_started", { tripId });
+        emitToUser(trip.driver?.toString(), "trip_started", { tripId });
+        emitToUser(trip.driver?.toString(), "start_location_tracking", { tripId });
 
         return response(res, 200, "Trip started.");
-
     } catch (err) {
         console.error("startTrip error:", err.message);
         return response(res, 500, "Internal server error.");
@@ -527,70 +419,35 @@ export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
 
     try {
-        const trip = await Trip.findOneAndUpdate(
-            {
-                _id: tripId,
-                status: "in_progress"
-            },
-            {
-                status: "completed",
-                endTime: new Date()
-            },
-            { new: true }
-        );
+        const trip = await Trip.findById(tripId);
+        if (!trip) return response(res, 404, "Trip not found.");
 
-        if (!trip) {
-            return response(res, 400, "Trip is not in progress or already completed.");
-        }
-
-        // ✅ Optional: driver auth check
-        // if (trip.driver.toString() !== req.user.id.toString()) {
-        //     return response(res, 403, "Not authorized.");
-        // }
-
-        // ✅ rating validation
-        if (rating !== undefined) {
-            if (rating < 1 || rating > 5) {
-                return response(res, 400, "Rating must be between 1 and 5.");
-            }
-            trip.ratingByRider = rating;
-        }
-
+        trip.status = "completed";
+        trip.endTime = new Date();
+        if (rating) trip.ratingByRider = rating;
         await trip.save();
-
-        const durationMs = trip.endTime - trip.startTime;
-        const durationMin = Math.ceil(durationMs / 60000);
 
         await trip.populate("rider", "name phone");
         await trip.populate("driver", "name phone carModel carNumber");
 
-        const payload = {
-            tripId: trip._id.toString(),
+        // Notify rider and driver
+        emitToUser(trip.rider?.toString(), "trip_completed", {
+            tripId: trip._id,
             endTime: trip.endTime,
-            fare: trip.fare,
-            durationMin,
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-        };
-
-        emitToUser(trip.rider.toString(), "trip_completed", {
-            ...payload,
-            driver: trip.driver
+            driver: trip.driver,
         });
 
         if (trip.driver) {
-            emitToUser(trip.driver.toString(), "trip_completed", {
-                ...payload,
-                rider: trip.rider
+            emitToUser(trip.driver?.toString(), "trip_completed", {
+                tripId: trip._id,
+                endTime: trip.endTime,
+                rider: trip.rider,
             });
         }
 
         return response(res, 200, "Trip completed.");
-
     } catch (err) {
-        console.error("❌ completeTrip error:", err);
+        console.error(err);
         return response(res, 500, "Internal server error.");
     }
 };
@@ -599,59 +456,27 @@ export const getTripById = async (req, res) => {
     const { tripId } = req.params;
 
     try {
-        if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
-            return response(res, 400, "Invalid tripId.");
-        }
-
         const trip = await Trip.findById(tripId)
-            .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime startTime endTime ratingByRider")
             .populate("rider", "name phone")
-            .populate("driver", "name phone carModel carNumber");
+            .populate("driver", "name phone carNumber carModel carType");
 
-        if (!trip) {
-            return response(res, 404, "Trip not found.");
-        }
+        if (!trip) return response(res, 404, "Trip not found.");
 
-        // ✅ Authorization
-        const userId = req.user?._id?.toString();
-
-        if (
-            trip.rider.toString() !== userId &&
-            trip.driver?.toString() !== userId &&
-            req.user?.role !== "admin"
-        ) {
-            return response(res, 403, "Not authorized to view this trip.");
-        }
-
-        let durationMin = null;
-        if (trip.startTime && trip.endTime) {
-            durationMin = Math.ceil((trip.endTime - trip.startTime) / 60000);
-        }
-
-        const formattedTrip = {
-            ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-            durationMin
-        };
-
-        return response(res, 200, "Trip fetched successfully.", formattedTrip);
-
+        return response(res, 200, "Trip fetched successfully.", trip);
     } catch (err) {
-        console.error("❌ getTripById error:", err);
+        console.error(err);
         return response(res, 500, "Internal server error.");
     }
 };
 
 export const getActiveTrips = async (req, res) => {
+    const { userId, role } = req.query; // role: 'rider' or 'driver'
+
+    if (!userId || !["rider", "driver"].includes(role)) {
+        return response(res, 400, "userId and valid role (rider/driver) are required.");
+    }
+
     try {
-        const userId = req.user.id;
-        const role = req.user.role; // 'rider' or 'driver'
-
-        if (!["rider", "driver"].includes(role)) {
-            return response(res, 400, "Invalid role.");
-        }
-
         const filter = {
             [role]: userId,
             status: { $nin: ["completed", "cancelled"] }
@@ -659,57 +484,47 @@ export const getActiveTrips = async (req, res) => {
 
         const trips = await Trip.find(filter)
             .sort({ scheduledTime: -1 })
-            .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime startTime")
             .populate("rider", "name phone")
-            .populate("driver", "name phone carModel carNumber");
+            .populate("driver", "name phone carModel carNumber carType");
 
-        const formattedTrips = trips.map(trip => ({
-            ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-        }));
 
-        return response(res, 200, "Active trips fetched.", formattedTrips);
-
+        return response(res, 200, "Active trips fetched.", trips);
     } catch (err) {
-        console.error("❌ getActiveTrips error:", err);
+        console.error(err);
         return response(res, 500, "Internal server error.");
     }
 };
 
 // Get trips history
 export const getTripActivity = async (req, res) => {
+    const { userId, role } = req.query;
+
+    if (!userId || !["rider", "driver"].includes(role)) {
+        return res.status(400).json({
+            status: 400,
+            message: "userId and valid role (rider/driver) are required.",
+        });
+    }
+
     try {
-        const userId = req.user.id;
-        const role = req.user.role;
-
-        if (!["rider", "driver"].includes(role)) {
-            return response(res, 400, "Invalid role.");
-        }
-
-        const { page = 1, limit = 20 } = req.query;
-        const skip = (page - 1) * limit;
-
         const trips = await Trip.find({
             [role]: userId,
             status: { $in: ["completed", "cancelled"] },
         })
             .sort({ updatedAt: -1 })
-            .skip(skip)
-            .limit(Number(limit))
             .populate("rider", "name phone")
             .populate("driver", "name phone carModel carNumber");
 
-        const formattedTrips = trips.map(trip => ({
-            ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-        }));
-
-        return response(res, 200, "Trip activity retrieved.", formattedTrips);
-
+        return res.status(200).json({
+            status: 200,
+            message: "Trip activity retrieved.",
+            data: trips,
+        });
     } catch (err) {
-        console.error("❌ getTripActivity error:", err);
-        return response(res, 500, "Internal server error.");
+        console.error(err);
+        return res.status(500).json({
+            status: 500,
+            message: "Internal server error.",
+        });
     }
 };
