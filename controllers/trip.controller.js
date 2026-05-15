@@ -142,70 +142,141 @@ const response = (res, status, message, data = null) =>
     res.status(status).json({ status, message, data });
 
 
+// export const confirmTrip = async (req, res) => {
+//     try {
+//         const { riderId, pickupLocation, dropoffLocation, vehicleType, scheduledTime } = req.body;
+
+//         if (!riderId || !pickupLocation || !dropoffLocation || !vehicleType || !scheduledTime) {
+//             return response(res, 400, "Missing required fields.");
+//         }
+
+//         const pickup = normalizeLocation(pickupLocation);
+//         const dropoff = normalizeLocation(dropoffLocation);
+//         const now = new Date();
+//         if (!pickup.address || !dropoff.address) {
+//             return response(res, 400, "Pickup and dropoff address are required.");
+//         }
+// const diffInMinutes = (sched.getTime() - now.getTime()) / (1000 * 60);
+//         if (diffInMinutes < 30) {
+//             return response(res, 400, "Rides must be booked at least 30 minutes in advance.");
+//         }
+
+//         const rider = await User.findById(riderId);
+//         if (!rider) return response(res, 404, "Rider not found.");
+
+
+//         const sched = new Date(scheduledTime);
+
+//         const route = await getDistanceAndDuration(pickup, dropoff);
+//         const fares = calculateFares(route.distanceMeters, route.durationSec);
+//         const selectedFare = fares.find(f => f.type === vehicleType);
+
+//         if (!selectedFare) return response(res, 400, "Invalid vehicle type.");
+
+//         const trip = await Trip.create({
+//             rider: riderId,
+//             pickupLocation: pickup,
+//             dropoffLocation: dropoff,
+//             scheduledTime: sched,
+//             vehicleType,
+//             fare: selectedFare.total,
+//             status: "requested"
+//         });
+
+//         // ✅ ALL rides go to admin now
+//         emitToAdmin("ride_requested", {
+//             tripId: trip._id.toString(),
+//             rider: { name: rider.name, phone: rider.phone },
+//             pickupLocation: pickup,
+//             dropoffLocation: dropoff,
+//             pickupLabel: pickup.address,
+//             dropoffLabel: dropoff.address,
+//             fare: `KES ${trip.fare}`,
+//             vehicleType,
+//             distance: route.distanceText,
+//             duration: route.durationText,
+//             scheduledTime: sched,
+//         });
+
+//         return response(res, 201, "Trip confirmed. Waiting for admin to assign a driver.", { trip });
+
+//     } catch (err) {
+//         console.error("❌ confirmTrip error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
+
 export const confirmTrip = async (req, res) => {
     try {
-        const { riderId, pickupLocation, dropoffLocation, vehicleType, scheduledTime } = req.body;
+        const { pickup, dropoff, vehicleType, scheduledTime, riderId } = req.body;
 
-        if (!riderId || !pickupLocation || !dropoffLocation || !vehicleType || !scheduledTime) {
-            return response(res, 400, "Missing required fields.");
+        // 1. DATA VALIDATION
+        if (!pickup || !dropoff || !vehicleType) {
+            return res.status(400).json({ message: "Missing required trip details." });
         }
 
-        const pickup = normalizeLocation(pickupLocation);
-        const dropoff = normalizeLocation(dropoffLocation);
+        // 2. INITIALIZE 'sched' BEFORE USE (Fixes the ReferenceError)
+        // If scheduledTime exists, use it; otherwise, default to "now"
+        const sched = scheduledTime ? new Date(scheduledTime) : new Date();
         const now = new Date();
-        if (!pickup.address || !dropoff.address) {
-            return response(res, 400, "Pickup and dropoff address are required.");
+
+        // 3. APPLY THE 30-MINUTE RULE
+        const diffMs = sched - now;
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+
+        if (diffMins < 30) {
+            return res.status(400).json({ 
+                message: "Rides must be booked at least 30 minutes in advance. Please adjust your pickup time." 
+            });
         }
-const diffInMinutes = (sched.getTime() - now.getTime()) / (1000 * 60);
-        if (diffInMinutes < 30) {
-            return response(res, 400, "Rides must be booked at least 30 minutes in advance.");
+
+        // 4. CHECK FOR ACTIVE TRIPS
+        const existingTrip = await Trip.findOne({ 
+            rider: riderId, 
+            status: { $in: ['requested', 'accepted', 'started'] } 
+        });
+
+        if (existingTrip) {
+            return res.status(400).json({ message: "You already have an active ride request." });
         }
-        
-        const rider = await User.findById(riderId);
-        if (!rider) return response(res, 404, "Rider not found.");
 
+        // 5. NORMALIZE LOCATIONS & CALCULATE FARE (Example logic)
+        // This is where you call Google Maps API or your fare engine
+        const estimatedFare = calculateFare(pickup, dropoff, vehicleType); 
 
-        const sched = new Date(scheduledTime);
-
-        const route = await getDistanceAndDuration(pickup, dropoff);
-        const fares = calculateFares(route.distanceMeters, route.durationSec);
-        const selectedFare = fares.find(f => f.type === vehicleType);
-
-        if (!selectedFare) return response(res, 400, "Invalid vehicle type.");
-
-        const trip = await Trip.create({
+        // 6. CREATE TRIP IN DATABASE
+        const newTrip = await Trip.create({
             rider: riderId,
-            pickupLocation: pickup,
+            pickupLocation: pickup, // Ensure this matches your Schema (lat/lng/label)
             dropoffLocation: dropoff,
-            scheduledTime: sched,
             vehicleType,
-            fare: selectedFare.total,
-            status: "requested"
+            scheduledTime: sched,
+            fare: estimatedFare,
+            status: 'requested'
         });
 
-        // ✅ ALL rides go to admin now
-        emitToAdmin("ride_requested", {
-            tripId: trip._id.toString(),
-            rider: { name: rider.name, phone: rider.phone },
-            pickupLocation: pickup,
-            dropoffLocation: dropoff,
-            pickupLabel: pickup.address,
-            dropoffLabel: dropoff.address,
-            fare: `KES ${trip.fare}`,
-            vehicleType,
-            distance: route.distanceText,
-            duration: route.durationText,
-            scheduledTime: sched,
+        // 7. EMIT TO ADMIN DASHBOARD
+        // This triggers the popup on your AdminScreen.dart
+        const io = getIO(); 
+        io.emit('ride_requested', {
+            _id: newTrip._id,
+            riderName: req.user?.name || "Valued Rider", // Use auth middleware user data
+            pickupLocation: pickup.label || "Pickup Point",
+            dropoffLocation: dropoff.label || "Dropoff Point",
+            fare: estimatedFare,
+            vehicleType: vehicleType
         });
 
-        return response(res, 201, "Trip confirmed. Waiting for admin to assign a driver.", { trip });
+        return res.status(201).json({
+            message: "Trip requested successfully",
+            trip: newTrip
+        });
 
-    } catch (err) {
-        console.error("❌ confirmTrip error:", err);
-        return response(res, 500, "Internal server error.");
+    } catch (error) {
+        console.error("❌ confirmTrip error:", error);
+        return res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
-
 export const assignTrip = async (req, res) => {
     const { tripId, driverId } = req.body;
 
