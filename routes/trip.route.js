@@ -21,5 +21,6 @@ router.post("/request", tripController.confirmTrip);
 router.post("/assign", verifyToken, requireAdmin, tripController.assignTrip);
 
 router.get("/all", verifyToken, requireAdmin, tripController.getAllTrips);
-
+// Allow riders to cancel their own requests
+router.post("/cancel-rider", verifyToken, tripController.cancelTrip);
 export default router;
