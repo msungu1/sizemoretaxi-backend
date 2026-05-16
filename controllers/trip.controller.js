@@ -709,14 +709,75 @@ export const completeTrip = async (req, res) => {
     }
 };
 
+// 
+
+
+//     const { tripId } = req.params;
+
+//     try {
+//         if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
+//             return response(res, 400, "Invalid tripId.");
+//         }
+
+//         const trip = await Trip.findById(tripId)
+//             .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime startTime endTime ratingByRider")
+//             .populate("rider", "name phone")
+//             .populate("driver", "name phone carModel carNumber");
+
+//         if (!trip) {
+//             return response(res, 404, "Trip not found.");
+//         }
+
+//         const currentUserId = (req.user.id || req.user._id).toString();
+//         const currentUserRole = req.user.role;
+
+//         // FIXED: Access ._id because the fields are populated (objects)
+//         const isRider = trip.rider?._id?.toString() === currentUserId;
+//         const isDriver = trip.driver?._id?.toString() === currentUserId;
+//         const isAdmin = currentUserRole === "admin";
+//         // ✅ Authorization
+//         const userId = req.user?._id?.toString();
+
+//         if (
+//             trip.rider.toString() !== userId &&
+//             trip.driver?.toString() !== userId &&
+//             req.user?.role !== "admin"
+//         ) {
+//             return response(res, 403, "Not authorized to view this trip.");
+//         }
+
+//         let durationMin = null;
+//         if (trip.startTime && trip.endTime) {
+//             const start = new Date(trip.startTime);
+//             const end = new Date(trip.endTime);
+//             durationMin = Math.ceil((end - start) / 60000);
+//         }
+
+//         const formattedTrip = {
+//             ...trip.toObject(),
+//             pickupLabel: trip.pickupLocation?.address,
+//             dropoffLabel: trip.dropoffLocation?.address,
+//             durationMin
+//         };
+
+//         return response(res, 200, "Trip fetched successfully.", formattedTrip);
+
+//     } catch (err) {
+//         console.error("❌ getTripById error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
+
 export const getTripById = async (req, res) => {
     const { tripId } = req.params;
 
     try {
+        // 1. Validation
         if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
             return response(res, 400, "Invalid tripId.");
         }
 
+        // 2. Fetch data
         const trip = await Trip.findById(tripId)
             .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime startTime endTime ratingByRider")
             .populate("rider", "name phone")
@@ -726,26 +787,38 @@ export const getTripById = async (req, res) => {
             return response(res, 404, "Trip not found.");
         }
 
-        // ✅ Authorization
-        const userId = req.user?._id?.toString();
+        // 3. Robust Authorization
+        if (!req.user) {
+            return response(res, 401, "Authentication required.");
+        }
 
-        if (
-            trip.rider.toString() !== userId &&
-            trip.driver?.toString() !== userId &&
-            req.user?.role !== "admin"
-        ) {
+        const currentUserId = (req.user.id || req.user._id).toString();
+        const currentUserRole = req.user.role;
+
+        // Check against populated sub-documents
+        const isRider = trip.rider?._id?.toString() === currentUserId;
+        const isDriver = trip.driver?._id?.toString() === currentUserId;
+        const isAdmin = currentUserRole === "admin";
+
+        // If NONE of these are true, block access
+        if (!isRider && !isDriver && !isAdmin) {
             return response(res, 403, "Not authorized to view this trip.");
         }
 
+        // 4. Calculate duration
         let durationMin = null;
         if (trip.startTime && trip.endTime) {
-            durationMin = Math.ceil((trip.endTime - trip.startTime) / 60000);
+            const start = new Date(trip.startTime);
+            const end = new Date(trip.endTime);
+            durationMin = Math.ceil((end - start) / 60000);
         }
 
+        // 5. Format and Return
         const formattedTrip = {
             ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
+            // Fallback for address vs label
+            pickupLabel: trip.pickupLocation?.address || trip.pickupLocation?.label || "Unknown",
+            dropoffLabel: trip.dropoffLocation?.address || trip.dropoffLocation?.label || "Unknown",
             durationMin
         };
 
@@ -756,7 +829,6 @@ export const getTripById = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
-
 export const getActiveTrips = async (req, res) => {
     try {
         // 1. Check if user is authenticated (prevents TypeError: Cannot read properties of undefined)
