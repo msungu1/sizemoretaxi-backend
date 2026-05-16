@@ -6,15 +6,15 @@ import { requireAdmin } from "../middleware/requireAdmin.js";
 const router = express.Router();
 
 router.post("/available", verifyToken, requireAdmin, tripController.getAvailableDrivers);
-router.post("/start/:tripId", tripController.startTrip);
-router.post("/complete", tripController.completeTrip);
+router.post("/start/:tripId",verifyToken, tripController.startTrip);
+router.post("/complete",verifyToken, tripController.completeTrip);
 router.post("/cancel", verifyToken, requireAdmin, tripController.cancelTrip);
-router.get("/active", tripController.getActiveTrips);
-router.get("/activity", tripController.getTripActivity);
-router.get("/:tripId", tripController.getTripById);
+router.get("/active", verifyToken,tripController.getActiveTrips);
+router.get("/activity", verifyToken,tripController.getTripActivity);
+router.get("/:tripId", verifyToken, tripController.getTripById);
 
 // 1) user selects vehicle options after typing pickup + dropoff
-router.post("/options", tripController.getTripOptions);
+router.post("/options",verifyToken, tripController.getTripOptions);
 
 // 2) user selects vehicle and confirms
 // router.post("/request", tripController.confirmTrip);
