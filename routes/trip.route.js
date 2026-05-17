@@ -18,7 +18,7 @@ router.post("/options",verifyToken, tripController.getTripOptions);
 
 // 2) user selects vehicle and confirms
 // router.post("/request", tripController.confirmTrip);
-router.post("/confirm", tripController.confirmTrip);
+router.post("/confirm",verifyToken, tripController.confirmTrip);
 router.post("/assign", verifyToken, requireAdmin, tripController.assignTrip);
 
 router.get("/all", verifyToken, requireAdmin, tripController.getAllTrips);

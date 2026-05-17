@@ -5,8 +5,6 @@ import { emitToUser, emitToAdmin } from "../lib/socket.js";
 import { driverLocations } from "../lib/socket.js";
 import mongoose from "mongoose";
 
-
-
 const GOOGLE_MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const MAX_NEARBY_KM = Number(process.env.MAX_NEARBY_KM || 8); // choose your radius
 
@@ -388,7 +386,7 @@ export const cancelTrip = async (req, res) => {
     const { tripId, reason } = req.body;
 
     try {
-        const finalReason = reason?.trim() || "Cancelled by admin";
+        const finalReason = reason?.trim() || "Cancelled";
 
         const trip = await Trip.findOneAndUpdate(
             {
@@ -398,7 +396,6 @@ export const cancelTrip = async (req, res) => {
             {
                 status: "cancelled",
                 cancellationReason: finalReason,
-                cancelledBy: "admin",
                 cancelledAt: new Date()
             },
             { new: true }
@@ -408,23 +405,26 @@ export const cancelTrip = async (req, res) => {
             return response(res, 400, "Trip is already completed or cancelled.");
         }
 
+        // 🚀 1. UNLOCK THE RIDER (Very Important!)
+        await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+
         const payload = {
             tripId: trip._id.toString(),
             status: "cancelled",
             reason: trip.cancellationReason,
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
         };
 
+        // 🚀 2. NOTIFY EVERYONE VIA SOCKETS
         emitToUser(trip.rider.toString(), "trip_cancelled", payload);
+        emitToAdmin("trip_cancelled", { tripId: trip._id.toString() });
 
         if (trip.driver) {
+            // Also unlock the driver if one was assigned
+            await User.findByIdAndUpdate(trip.driver, { isRiding: false });
             emitToUser(trip.driver.toString(), "trip_cancelled", payload);
         }
 
-        return response(res, 200, "Trip cancelled.", { trip });
+        return response(res, 200, "Trip cancelled successfully.", { trip });
 
     } catch (err) {
         console.error("❌ cancelTrip error:", err);
@@ -642,14 +642,8 @@ export const completeTrip = async (req, res) => {
 
     try {
         const trip = await Trip.findOneAndUpdate(
-            {
-                _id: tripId,
-                status: "in_progress"
-            },
-            {
-                status: "completed",
-                endTime: new Date()
-            },
+            { _id: tripId, status: "in_progress" },
+            { status: "completed", endTime: new Date() },
             { new: true }
         );
 
@@ -657,51 +651,30 @@ export const completeTrip = async (req, res) => {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
 
-        // ✅ Optional: driver auth check
-        // if (trip.driver.toString() !== req.user.id.toString()) {
-        //     return response(res, 403, "Not authorized.");
-        // }
-
-        // ✅ rating validation
-        if (rating !== undefined) {
-            if (rating < 1 || rating > 5) {
-                return response(res, 400, "Rating must be between 1 and 5.");
-            }
-            trip.ratingByRider = rating;
+        // 🚀 3. UNLOCK BOTH PARTIES
+        await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+        if (trip.driver) {
+            await User.findByIdAndUpdate(trip.driver, { isRiding: false });
         }
 
-        await trip.save();
-
-        const durationMs = trip.endTime - trip.startTime;
-        const durationMin = Math.ceil(durationMs / 60000);
-
-        await trip.populate("rider", "name phone");
-        await trip.populate("driver", "name phone carModel carNumber");
+        if (rating !== undefined) {
+            trip.ratingByRider = rating;
+            await trip.save();
+        }
 
         const payload = {
             tripId: trip._id.toString(),
-            endTime: trip.endTime,
+            status: "completed",
             fare: trip.fare,
-            durationMin,
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
         };
 
-        emitToUser(trip.rider.toString(), "trip_completed", {
-            ...payload,
-            driver: trip.driver
-        });
-
+        // 🚀 4. NOTIFY RIDER & DRIVER
+        emitToUser(trip.rider.toString(), "trip_completed", payload);
         if (trip.driver) {
-            emitToUser(trip.driver.toString(), "trip_completed", {
-                ...payload,
-                rider: trip.rider
-            });
+            emitToUser(trip.driver.toString(), "trip_completed", payload);
         }
 
-        return response(res, 200, "Trip completed.");
+        return response(res, 200, "Trip completed successfully.");
 
     } catch (err) {
         console.error("❌ completeTrip error:", err);
@@ -873,7 +846,6 @@ export const getActiveTrips = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
-
 // Get trips history
 export const getTripActivity = async (req, res) => {
     try {
