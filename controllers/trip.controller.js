@@ -170,6 +170,7 @@ export const confirmTrip = async (req, res) => {
         }
 
         // 4. CHECK FOR ACTIVE TRIPS
+        const userRecord = await User.findById(riderId);
         const existingTrip = await Trip.findOne({ 
             rider: riderId, 
             status: { $in: ['requested', 'assigned', 'accepted', 'started', 'in_progress'] } 
@@ -189,7 +190,6 @@ export const confirmTrip = async (req, res) => {
             return res.status(400).json({ message: "Invalid vehicle type chosen." });
         }
 
-        const userRecord = await User.findById(riderId);
 
         // 6. CREATE TRIP IN DATABASE
         const newTrip = await Trip.create({
@@ -201,7 +201,8 @@ export const confirmTrip = async (req, res) => {
             fare: selectedFare.total,
             status: 'requested'
         });
-
+      // 6.5 LOCK THE RIDER
+    await User.findByIdAndUpdate(riderId, { isRiding: true });
         // 7. REAL-TIME EMIT TO ADMIN DASHBOARD
         // Uses the custom socket abstraction uncoupled from raw socket.io instances
         emitToAdmin("ride_requested", {
@@ -469,7 +470,6 @@ export const getAllTrips = async (req, res) => {
     }
 };
 
-// export const getAvailableDrivers = async (req, res) => {
 //     try {
 //         const { tripId } = req.query;
 //         if (!tripId) return response(res, 400, "tripId is required.");
