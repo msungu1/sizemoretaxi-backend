@@ -385,10 +385,19 @@ return response(res, 409, "Trip no longer available for assignment.");
 
 export const cancelTrip = async (req, res) => {
     const { tripId, reason } = req.body;
+    
+    // 🔍 DEBUG: Log the incoming request
+    console.log("🛠️ CANCEL REQUEST RECEIVED - TripID:", tripId);
 
     try {
-        const finalReason = reason?.trim() || "Cancelled";
+        if (!tripId) {
+            return response(res, 400, "tripId is required for cancellation.");
+        }
 
+        const finalReason = reason?.trim() || "Cancelled by user";
+
+        // 1. Update the Trip Status
+        // We look for the trip and ensure it's not already closed
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
@@ -402,12 +411,18 @@ export const cancelTrip = async (req, res) => {
             { new: true }
         );
 
+        // 🛑 If no trip found, it means ID is wrong or it's already cancelled/done
         if (!trip) {
+            console.log("⚠️ Cancellation failed: Trip not found or already closed.");
             return response(res, 400, "Trip is already completed or cancelled.");
         }
 
-        // 🚀 1. UNLOCK THE RIDER (Very Important!)
+        console.log("✅ Trip status updated to 'cancelled' in DB.");
+
+        // 🚀 2. UNLOCK THE RIDER 
+        // This is the most important fix for your "Active Trip" error
         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+        console.log(`🔓 Rider ${trip.rider} unlocked.`);
 
         const payload = {
             tripId: trip._id.toString(),
@@ -415,14 +430,20 @@ export const cancelTrip = async (req, res) => {
             reason: trip.cancellationReason,
         };
 
-        // 🚀 2. NOTIFY EVERYONE VIA SOCKETS
-        emitToUser(trip.rider.toString(), "trip_cancelled", payload);
-        emitToAdmin("trip_cancelled", { tripId: trip._id.toString() });
+        // 🚀 3. NOTIFY ADMIN 
+        // This clears the pending card from the Admin Dashboard
+        emitToAdmin("trip_cancelled", payload);
+        console.log("📡 Socket: Admin notified of cancellation.");
 
+        // 🚀 4. NOTIFY RIDER
+        // This stops the spinner in the Flutter app
+        emitToUser(trip.rider.toString(), "trip_cancelled", payload);
+
+        // 🚀 5. UNLOCK & NOTIFY DRIVER (If one was assigned)
         if (trip.driver) {
-            // Also unlock the driver if one was assigned
             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
             emitToUser(trip.driver.toString(), "trip_cancelled", payload);
+            console.log(`🔓 Driver ${trip.driver} unlocked and notified.`);
         }
 
         return response(res, 200, "Trip cancelled successfully.", { trip });
@@ -432,6 +453,7 @@ export const cancelTrip = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+
 
 export const getAllTrips = async (req, res) => {
     try {
