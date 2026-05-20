@@ -228,75 +228,9 @@ export const confirmTrip = async (req, res) => {
         return res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
-export const assignTrip = async (req, res) => {
-    const { tripId, driverId } = req.body;
 
-    try {
-        const driver = await User.findById(driverId);
-        if (!driver) return response(res, 404, "Driver not found.");
-
-        if (driver.role !== "driver") {
-            return response(res, 400, "User is not a driver.");
-        }
-
-        // ✅ prevent driver double-booking
-        const activeTrip = await Trip.findOne({
-            driver: driverId,
-            status: { $in: ["assigned", "accepted", "in_progress"] }
-        });
-
-        if (activeTrip) {
-            return response(res, 409, "Driver already has an active trip.");
-        }
-
-        const trip = await Trip.findOneAndUpdate(
-            { _id: tripId, status: "requested" },
-            { status: "assigned", driver: driverId },
-            { new: true }
-        );
-
-        if (!trip) {
-return response(res, 409, "Trip no longer available for assignment.");  
-      }
-
-        // optional: route info
-        const route = await getDistanceAndDuration(
-            trip.pickupLocation,
-            trip.dropoffLocation
-        );
-
-        emitToUser(driverId, "ride_assigned", {
-            tripId: trip._id.toString(),
-            pickupLocation: trip.pickupLocation,
-            dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation.address,
-            dropoffLabel: trip.dropoffLocation.address,
-            fare: `KES ${trip.fare}`,
-            vehicleType: trip.vehicleType,
-            distance: route.distanceText,
-            duration: route.durationText,
-            scheduledTime: trip.scheduledTime,
-        });
-
-        emitToUser(trip.rider.toString(), "ride_assigned", {
-            tripId: trip._id.toString(),
-            driver: {
-                name: driver.name,
-                phone: driver.phone,
-                carModel: driver.carModel,
-                carNumber: driver.carNumber,
-            }
-        });
-
-        return response(res, 200, "Trip assigned to driver.", { trip });
-
-    } catch (err) {
-        console.error("❌ assignTrip error:", err);
-        return response(res, 500, "Internal server error.");
-    }
-};
 export const cancelTrip = async (req, res) => {
-    const { tripId, reason } = req.body;
+    const { tripId, reason,cancelledBy } = req.body;
     
     // 🔍 DEBUG: Log the incoming request
     console.log("🛠️ CANCEL REQUEST RECEIVED - TripID:", tripId);
@@ -752,6 +686,62 @@ export const getTripActivity = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+export const assignTrip = async (req, res) => {
+    try {
+        const { tripId, driverId } = req.body;
+
+        const trip = await Trip.findOneAndUpdate(
+            {
+                _id: tripId,
+                status: "accepted"
+            },
+            {
+                status: "assigned",
+                driver: driverId
+            },
+            { new: true }
+        );
+
+        if (!trip) {
+            return response(res, 400, "Trip not found or not ready for assignment.");
+        }
+
+        const driver = await User.findById(driverId);
+
+        // notify driver
+        emitToUser(driverId, "ride_assigned", {
+            tripId: trip._id.toString(),
+            status: "assigned",
+            pickup: trip.pickupLocation,
+            dropoff: trip.dropoffLocation
+        });
+
+        // notify rider (IMPORTANT FIX YOU WERE ASKING ABOUT)
+        emitToUser(trip.rider.toString(), "driver_assigned", {
+            tripId: trip._id.toString(),
+            status: "driver_assigned",
+            driver: {
+                name: driver.name,
+                phone: driver.phone,
+                carModel: driver.carModel,
+                carNumber: driver.carNumber,
+            },
+            message: "Driver is on the way"
+        });
+
+        // notify admin
+        emitToAdmin("driver_assigned", {
+            tripId: trip._id.toString(),
+            driverId
+        });
+
+        return response(res, 200, "Driver assigned successfully.", { trip });
+
+    } catch (err) {
+        console.error("assignTrip error:", err);
+        return response(res, 500, "Internal server error.");
+    }
+};
 export const acceptTripByAdmin = async (req, res) => {
     try {
         const { tripId } = req.body;
@@ -771,18 +761,21 @@ export const acceptTripByAdmin = async (req, res) => {
             return response(res, 400, "Trip not found.");
         }
 
+        const payload = {
+            tripId: trip._id.toString(),
+            status: "accepted",
+            message: "Ride accepted. Finding a driver..."
+        };
+
+        // 🚀 notify rider (WAITING STATE)
         emitToUser(
             trip.rider.toString(),
             "ride_accepted_by_admin",
-            {
-                tripId: trip._id,
-                message: "Ride accepted. Looking for driver."
-            }
+            payload
         );
 
-        emitToAdmin("ride_accepted_by_admin", {
-            tripId: trip._id
-        });
+        // 🚀 notify admin dashboard
+        emitToAdmin("ride_accepted_by_admin", payload);
 
         return response(res, 200, "Ride accepted.");
 
@@ -791,3 +784,42 @@ export const acceptTripByAdmin = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+// export const acceptTripByAdmin = async (req, res) => {
+//     try {
+//         const { tripId } = req.body;
+
+//         const trip = await Trip.findOneAndUpdate(
+//             {
+//                 _id: tripId,
+//                 status: "requested"
+//             },
+//             {
+//                 status: "accepted"
+//             },
+//             { new: true }
+//         );
+
+//         if (!trip) {
+//             return response(res, 400, "Trip not found.");
+//         }
+
+//         emitToUser(
+//             trip.rider.toString(),
+//             "ride_accepted_by_admin",
+//             {
+//                 tripId: trip._id,
+//                 message: "Ride accepted. Looking for driver."
+//             }
+//         );
+
+//         emitToAdmin("ride_accepted_by_admin", {
+//             tripId: trip._id
+//         });
+
+//         return response(res, 200, "Ride accepted.");
+
+//     } catch (err) {
+//         console.log(err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
