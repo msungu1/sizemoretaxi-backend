@@ -690,10 +690,16 @@ export const assignTrip = async (req, res) => {
     try {
         const { tripId, driverId } = req.body;
 
+        console.log("Assigning:", tripId, driverId);
+
+        const existingTrip = await Trip.findById(tripId);
+
+        console.log("Trip Before Assign:", existingTrip);
+
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: "accepted"
+                status: { $in: ["requested", "accepted"] }
             },
             {
                 status: "assigned",
@@ -703,12 +709,15 @@ export const assignTrip = async (req, res) => {
         );
 
         if (!trip) {
-            return response(res, 400, "Trip not found or not ready for assignment.");
+            return response(
+                res,
+                400,
+                "Trip not found or not ready for assignment."
+            );
         }
 
         const driver = await User.findById(driverId);
 
-        // notify driver
         emitToUser(driverId, "ride_assigned", {
             tripId: trip._id.toString(),
             status: "assigned",
@@ -716,7 +725,6 @@ export const assignTrip = async (req, res) => {
             dropoff: trip.dropoffLocation
         });
 
-        // notify rider (IMPORTANT FIX YOU WERE ASKING ABOUT)
         emitToUser(trip.rider.toString(), "driver_assigned", {
             tripId: trip._id.toString(),
             status: "driver_assigned",
@@ -729,17 +737,26 @@ export const assignTrip = async (req, res) => {
             message: "Driver is on the way"
         });
 
-        // notify admin
         emitToAdmin("driver_assigned", {
             tripId: trip._id.toString(),
             driverId
         });
 
-        return response(res, 200, "Driver assigned successfully.", { trip });
+        return response(
+            res,
+            200,
+            "Driver assigned successfully.",
+            { trip }
+        );
 
     } catch (err) {
         console.error("assignTrip error:", err);
-        return response(res, 500, "Internal server error.");
+
+        return response(
+            res,
+            500,
+            "Internal server error."
+        );
     }
 };
 export const acceptTripByAdmin = async (req, res) => {
@@ -782,5 +799,6 @@ export const acceptTripByAdmin = async (req, res) => {
     } catch (err) {
         console.log(err);
         return response(res, 500, "Internal server error.");
+        
     }
 };
