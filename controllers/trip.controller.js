@@ -243,11 +243,11 @@ export const confirmTrip = async (req, res) => {
             return res.status(400).json({ message: "Valid pickup and dropoff required." });
         }
 
+        // 30 min rule
         const sched = scheduledTime ? new Date(scheduledTime) : new Date();
         const now = new Date();
 
         const diffMins = Math.floor((sched - now) / (1000 * 60));
-
         if (diffMins < 30) {
             return res.status(400).json({
                 message: "Rides must be booked at least 30 minutes in advance."
@@ -255,20 +255,24 @@ export const confirmTrip = async (req, res) => {
         }
 
         const userRecord = await User.findById(riderId);
-
         if (!userRecord) {
             return res.status(404).json({ message: "Rider not found" });
         }
 
-        const existingTrip = await Trip.findOne({
+        // ✅ FIX #1: ONLY CHECK ACTIVE TRIPS (this is the real lock)
+        const activeTrip = await Trip.findOne({
             rider: riderId,
-            status: { $in: ['requested', 'assigned', 'accepted', 'in_progress'] }
+            status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
         });
 
-        if (existingTrip) {
-            return res.status(400).json({ message: "You already have an active ride." });
+        if (activeTrip) {
+            return res.status(400).json({
+                message: "You already have an active trip.",
+                tripId: activeTrip._id
+            });
         }
 
+        // route
         let route;
         try {
             route = await getDistanceAndDuration(normalizedPickup, normalizedDropoff);
@@ -286,16 +290,7 @@ export const confirmTrip = async (req, res) => {
             return res.status(400).json({ message: "Invalid vehicle type." });
         }
 
-        const user = await User.findOneAndUpdate(
-            { _id: riderId, isRiding: false },
-            { isRiding: true },
-            { new: true }
-        );
-
-        if (!user) {
-            return res.status(400).json({ message: "User already has an active ride." });
-        }
-
+        // ❌ REMOVE isRiding LOCK (THIS WAS YOUR BUG SOURCE)
         const newTrip = await Trip.create({
             rider: riderId,
             pickupLocation: normalizedPickup,
@@ -303,7 +298,12 @@ export const confirmTrip = async (req, res) => {
             vehicleType,
             scheduledTime: sched,
             fare: selectedFare.total,
-            status: 'requested'
+            status: "requested"
+        });
+
+        // (optional UI flag only — NOT a blocker anymore)
+        await User.findByIdAndUpdate(riderId, {
+            isRiding: true
         });
 
         emitToAdmin("ride_requested", {
@@ -330,13 +330,15 @@ export const confirmTrip = async (req, res) => {
 
     } catch (error) {
         console.error("❌ confirmTrip error:", error);
-        return res.status(500).json({ message: "Internal Server Error", error: error.message });
+        return res.status(500).json({
+            message: "Internal Server Error",
+            error: error.message
+        });
     }
 };
 export const cancelTrip = async (req, res) => {
-    const { tripId, reason,cancelledBy } = req.body;
-    
-    // 🔍 DEBUG: Log the incoming request
+    const { tripId, reason, cancelledBy } = req.body;
+
     console.log("🛠️ CANCEL REQUEST RECEIVED - TripID:", tripId);
 
     try {
@@ -344,57 +346,64 @@ export const cancelTrip = async (req, res) => {
             return response(res, 400, "tripId is required for cancellation.");
         }
 
-        const finalReason = reason?.trim() || "Cancelled by user";
+        const finalReason = reason?.trim() || "Cancelled";
 
-        // 1. Update the Trip Status
-        // We look for the trip and ensure it's not already closed
+        // 1. Cancel only active trips
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: { $nin: ["completed", "cancelled"] }
+                status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
             },
             {
-                status: "cancelled",
-                cancellationReason: finalReason,
-                cancelledAt: new Date()
+                $set: {
+                    status: "cancelled",
+                    cancellationReason: finalReason,
+                    cancelledAt: new Date()
+                }
             },
             { new: true }
         );
 
-        // 🛑 If no trip found, it means ID is wrong or it's already cancelled/done
         if (!trip) {
-            console.log("⚠️ Cancellation failed: Trip not found or already closed.");
-            return response(res, 400, "Trip is already completed or cancelled.");
+            return response(res, 400, "Trip not found or already closed.");
         }
 
-        console.log("✅ Trip status updated to 'cancelled' in DB.");
+        console.log("✅ Trip cancelled:", trip._id.toString());
 
-        // 🚀 2. UNLOCK THE RIDER 
-        // This is the most important fix for your "Active Trip" error
-        await User.findByIdAndUpdate(trip.rider, { isRiding: false });
-        console.log(`🔓 Rider ${trip.rider} unlocked.`);
+        // 2. ALWAYS unlock rider (UI flag only)
+        await User.findByIdAndUpdate(trip.rider, {
+            isRiding: false
+        });
+
+        console.log(`🔓 Rider unlocked: ${trip.rider}`);
+
+        // 3. Unlock driver ONLY if exists
+        if (trip.driver) {
+            await User.findByIdAndUpdate(trip.driver, {
+                isRiding: false
+            });
+
+            emitToUser(trip.driver.toString(), "trip_cancelled", {
+                tripId: trip._id.toString(),
+                status: "cancelled",
+                reason: finalReason
+            });
+
+            console.log(`🔓 Driver unlocked: ${trip.driver}`);
+        }
 
         const payload = {
             tripId: trip._id.toString(),
             status: "cancelled",
-            reason: trip.cancellationReason,
+            reason: finalReason,
+            cancelledBy: cancelledBy || "user"
         };
 
-        // 🚀 3. NOTIFY ADMIN 
-        // This clears the pending card from the Admin Dashboard
+        // 4. Notify systems
         emitToAdmin("trip_cancelled", payload);
-        console.log("📡 Socket: Admin notified of cancellation.");
-
-        // 🚀 4. NOTIFY RIDER
-        // This stops the spinner in the Flutter app
         emitToUser(trip.rider.toString(), "trip_cancelled", payload);
 
-        // 🚀 5. UNLOCK & NOTIFY DRIVER (If one was assigned)
-        if (trip.driver) {
-            await User.findByIdAndUpdate(trip.driver, { isRiding: false });
-            emitToUser(trip.driver.toString(), "trip_cancelled", payload);
-            console.log(`🔓 Driver ${trip.driver} unlocked and notified.`);
-        }
+        console.log("📡 Cancellation broadcast complete");
 
         return response(res, 200, "Trip cancelled successfully.", { trip });
 
