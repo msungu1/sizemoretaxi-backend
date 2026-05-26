@@ -48,6 +48,13 @@ const userSchema = new mongoose.Schema(
         enum: ["Chopper", "Comfort", "Business", "Premium"],
         licenseNumber: { type: String }, // existing driving license
         idNumber: { type: String }, // ID number field
+        currentLocation: {
+        lat: { type: Number },
+        lng: { type: Number },
+        heading: { type: Number },
+        speed: { type: Number },
+        updatedAt: { type: Date },
+},
     },
     { timestamps: true }
 );

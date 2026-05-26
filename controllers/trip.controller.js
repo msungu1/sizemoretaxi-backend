@@ -322,7 +322,9 @@ export const confirmTrip = async (req, res) => {
             duration: route.durationText,
             scheduledTime: sched,
         });
-
+emitToUser(riderId, "trip_created", {
+  tripId: newTrip._id,
+});
         return res.status(201).json({
             message: "Trip requested successfully",
             trip: newTrip
