@@ -138,96 +138,6 @@ export const getTripOptions = async (req, res) => {
 const response = (res, status, message, data = null) =>
     res.status(status).json({ status, message, data });
 
-// export const confirmTrip = async (req, res) => {
-//     try {
-//         const { pickup, dropoff, vehicleType, scheduledTime, riderId } = req.body;
-
-//         // 1. DATA VALIDATION (Check existence first!)
-//         if (!pickup || !dropoff || !vehicleType || !riderId) {
-//             return res.status(400).json({ message: "Missing required trip details." });
-//         }
-
-//         const normalizedPickup = normalizeLocation(pickup);
-//         const normalizedDropoff = normalizeLocation(dropoff);
-
-//         if (!normalizedPickup.address || !normalizedDropoff.address) {
-//             return res.status(400).json({ message: "Valid pickup and dropoff physical addresses are required." });
-//         }
-
-//         // 2. INITIALIZE TIME OBJECTS
-//         const sched = scheduledTime ? new Date(scheduledTime) : new Date();
-//         const now = new Date();
-
-//         // 3. APPLY THE 30-MINUTE RULE
-//         const diffMs = sched - now;
-//         const diffMins = Math.floor(diffMs / (1000 * 60));
-
-//         if (diffMins < 30) {
-//             return res.status(400).json({ 
-//                 message: "Rides must be booked at least 30 minutes in advance. Please adjust your pickup time." 
-//             });
-//         }
-
-//         // 4. CHECK FOR ACTIVE TRIPS
-//         const userRecord = await User.findById(riderId);
-//         const existingTrip = await Trip.findOne({ 
-//             rider: riderId, 
-//             status: { $in: ['requested', 'assigned', 'accepted', 'started', 'in_progress'] } 
-//         });
-
-//         if (existingTrip) {
-//             return res.status(400).json({ message: "You already have an active ride request." });
-//         }
-
-//         // 5. CALL GOOGLE MAPS API & COMPUTE PRICING
-//         // Pulls route stats and applies the pricing structures defined in your file
-//         const route = await getDistanceAndDuration(normalizedPickup, normalizedDropoff);
-//         const fares = calculateFares(route.distanceMeters, route.durationSec);
-//         const selectedFare = fares.find(f => f.type.toLowerCase() === vehicleType.toLowerCase());
-
-//         if (!selectedFare) {
-//             return res.status(400).json({ message: "Invalid vehicle type chosen." });
-//         }
-
-
-//         // 6. CREATE TRIP IN DATABASE
-//         const newTrip = await Trip.create({
-//             rider: riderId,
-//             pickupLocation: normalizedPickup,
-//             dropoffLocation: normalizedDropoff,
-//             vehicleType,
-//             scheduledTime: sched,
-//             fare: selectedFare.total,
-//             status: 'requested'
-//         });
-//       // 6.5 LOCK THE RIDER
-//     await User.findByIdAndUpdate(riderId, { isRiding: true });
-//         // 7. REAL-TIME EMIT TO ADMIN DASHBOARD
-//         // Uses the custom socket abstraction uncoupled from raw socket.io instances
-//         emitToAdmin("ride_requested", {
-//             tripId: newTrip._id.toString(),
-//             rider: { name: userRecord?.name || "Valued Rider", phone: userRecord?.phone || "" },
-//             pickupLocation: normalizedPickup,
-//             dropoffLocation: normalizedDropoff,
-//             pickupLabel: normalizedPickup.address,
-//             dropoffLabel: normalizedDropoff.address,
-//             fare: `KES ${newTrip.fare}`,
-//             vehicleType,
-//             distance: route.distanceText,
-//             duration: route.durationText,
-//             scheduledTime: sched,
-//         });
-
-//         return res.status(201).json({
-//             message: "Trip requested successfully",
-//             trip: newTrip
-//         });
-
-//     } catch (error) {
-//         console.error("❌ confirmTrip error:", error);
-//         return res.status(500).json({ message: "Internal Server Error", error: error.message });
-//     }
-// };
 export const confirmTrip = async (req, res) => {
     try {
         const { pickup, dropoff, vehicleType, scheduledTime, riderId } = req.body;
@@ -640,6 +550,20 @@ export const completeTrip = async (req, res) => {
             trip.ratingByRider = rating;
             await trip.save();
         }
+        if (!req.user) {
+    return response(res, 401, "Unauthorized");
+}
+
+const userId = req.user.id || req.user._id;
+
+// optional strict check
+if (
+    trip.driver?.toString() !== userId &&
+    trip.rider?.toString() !== userId &&
+    req.user.role !== "admin"
+) {
+    return response(res, 403, "Not allowed to complete this trip.");
+}
 
         const payload = {
             tripId: trip._id.toString(),
@@ -836,8 +760,21 @@ export const assignTrip = async (req, res) => {
         emitToUser(driverId, "ride_assigned", {
             tripId: trip._id.toString(),
             status: "assigned",
+
             pickup: trip.pickupLocation,
-            dropoff: trip.dropoffLocation
+            dropoff: trip.dropoffLocation,
+             // 💰 MONEY
+            fare: trip.fare,
+            vehicleType: trip.vehicleType,
+
+            distance: trip.distanceText || null,
+            duration: trip.durationText || null,
+
+             rider: {
+        name: userRecord.name,
+        phone: userRecord.phone
+    }
+
         });
 
         emitToUser(trip.rider.toString(), "driver_assigned", {
