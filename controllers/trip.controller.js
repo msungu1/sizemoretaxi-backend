@@ -725,17 +725,131 @@ export const getTripActivity = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+// export const assignTrip = async (req, res) => {
+//     try {
+//         const { tripId, driverId } = req.body;
+
+//         console.log("Assigning:", tripId, driverId);
+
+//         const existingTrip = await Trip.findById(tripId);
+
+//         console.log("Trip Before Assign:", existingTrip);
+
+//         const trip = await Trip.findOneAndUpdate(
+//             {
+//                 _id: tripId,
+//                 status: { $in: ["requested", "accepted"] }
+//             },
+//             {
+//                 status: "assigned",
+//                 driver: driverId
+//             },
+//             { new: true }
+//         );
+
+//         if (!trip) {
+//             return response(
+//                 res,
+//                 400,
+//                 "Trip not found or not ready for assignment."
+//             );
+//         }
+
+//         const driver = await User.findById(driverId);
+
+//         emitToUser(driverId, "ride_assigned", {
+//             tripId: trip._id.toString(),
+//             status: "assigned",
+
+//             pickup: trip.pickupLocation,
+//             dropoff: trip.dropoffLocation,
+//              // 💰 MONEY
+//             fare: trip.fare,
+//             vehicleType: trip.vehicleType,
+
+//             distance: trip.distanceText || null,
+//             duration: trip.durationText || null,
+
+//              rider: {
+//          id: rider._id,
+//         name: userRecord.name,
+//         phone: userRecord.phone
+//     }
+
+//         });
+
+//         emitToUser(trip.rider.toString(), "driver_assigned", {
+//             tripId: trip._id.toString(),
+//             status: "driver_assigned",
+//             driver: {
+//                 name: driver.name,
+//                 phone: driver.phone,
+//                 carModel: driver.carModel,
+//                 carNumber: driver.carNumber,
+//             },
+//             message: "Driver is on the way"
+//         });
+
+//         emitToAdmin("driver_assigned", {
+//             tripId: trip._id.toString(),
+//             driverId
+//         });
+
+//         return response(
+//             res,
+//             200,
+//             "Driver assigned successfully.",
+//             { trip }
+//         );
+
+//     } catch (err) {
+//         console.error("assignTrip error:", err);
+
+//         return response(
+//             res,
+//             500,
+//             "Internal server error."
+//         );
+//     }
+// };
 export const assignTrip = async (req, res) => {
     try {
         const { tripId, driverId } = req.body;
 
-        console.log("Assigning:", tripId, driverId);
+        console.log("🚗 Assigning Trip:", tripId, "Driver:", driverId);
 
-        const existingTrip = await Trip.findById(tripId);
+        if (!tripId || !driverId) {
+            return response(res, 400, "tripId and driverId are required.");
+        }
 
-        console.log("Trip Before Assign:", existingTrip);
+        // 1. Get trip
+        const trip = await Trip.findOne({
+            _id: tripId,
+            status: { $in: ["requested", "accepted"] }
+        });
 
-        const trip = await Trip.findOneAndUpdate(
+        if (!trip) {
+            return response(
+                res,
+                400,
+                "Trip not found or not ready for assignment."
+            );
+        }
+
+        // 2. Get driver
+        const driver = await User.findById(driverId);
+        if (!driver) {
+            return response(res, 404, "Driver not found.");
+        }
+
+        // 3. Get rider (🔥 FIX for your bug)
+        const rider = await User.findById(trip.rider);
+        if (!rider) {
+            return response(res, 404, "Rider not found.");
+        }
+
+        // 4. Update trip
+        const updatedTrip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
                 status: { $in: ["requested", "accepted"] }
@@ -747,68 +861,73 @@ export const assignTrip = async (req, res) => {
             { new: true }
         );
 
-        if (!trip) {
-            return response(
-                res,
-                400,
-                "Trip not found or not ready for assignment."
-            );
-        }
-
-        const driver = await User.findById(driverId);
-
-        emitToUser(driverId, "ride_assigned", {
-            tripId: trip._id.toString(),
+        // 5. Build shared payload (clean + consistent)
+        const ridePayload = {
+            tripId: updatedTrip._id.toString(),
             status: "assigned",
 
-            pickup: trip.pickupLocation,
-            dropoff: trip.dropoffLocation,
-             // 💰 MONEY
-            fare: trip.fare,
-            vehicleType: trip.vehicleType,
+            pickup: updatedTrip.pickupLocation,
+            dropoff: updatedTrip.dropoffLocation,
 
-            distance: trip.distanceText || null,
-            duration: trip.durationText || null,
+            fare: updatedTrip.fare,
+            vehicleType: updatedTrip.vehicleType,
 
-             rider: {
-        name: userRecord.name,
-        phone: userRecord.phone
-    }
+            distance: updatedTrip.distanceText || null,
+            duration: updatedTrip.durationText || null,
 
-        });
+            rider: {
+                id: rider._id.toString(),
+                name: rider.name,
+                phone: rider.phone
+            },
 
-        emitToUser(trip.rider.toString(), "driver_assigned", {
-            tripId: trip._id.toString(),
-            status: "driver_assigned",
             driver: {
+                id: driver._id.toString(),
                 name: driver.name,
                 phone: driver.phone,
                 carModel: driver.carModel,
-                carNumber: driver.carNumber,
-            },
+                carNumber: driver.carNumber
+            }
+        };
+
+        // ─────────────────────────────
+        // 6. NOTIFY DRIVER
+        // ─────────────────────────────
+        emitToUser(driverId, "ride_assigned", ridePayload);
+
+        // ─────────────────────────────
+        // 7. NOTIFY RIDER
+        // ─────────────────────────────
+        emitToUser(trip.rider.toString(), "driver_assigned", {
+            tripId: updatedTrip._id.toString(),
+            status: "driver_assigned",
+            driver: ridePayload.driver,
+            pickup: updatedTrip.pickupLocation,
+            dropoff: updatedTrip.dropoffLocation,
+            fare: updatedTrip.fare,
             message: "Driver is on the way"
         });
 
+        // ─────────────────────────────
+        // 8. NOTIFY ADMIN DASHBOARD
+        // ─────────────────────────────
         emitToAdmin("driver_assigned", {
-            tripId: trip._id.toString(),
-            driverId
+            tripId: updatedTrip._id.toString(),
+            driverId,
+            riderId: trip.rider.toString(),
+            status: "assigned"
         });
 
-        return response(
-            res,
-            200,
-            "Driver assigned successfully.",
-            { trip }
-        );
+        console.log("✅ Trip successfully assigned");
+
+        return response(res, 200, "Driver assigned successfully.", {
+            trip: updatedTrip
+        });
 
     } catch (err) {
-        console.error("assignTrip error:", err);
+        console.error("❌ assignTrip error:", err);
 
-        return response(
-            res,
-            500,
-            "Internal server error."
-        );
+        return response(res, 500, "Internal server error.");
     }
 };
 export const acceptTripByAdmin = async (req, res) => {
