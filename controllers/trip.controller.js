@@ -526,58 +526,130 @@ export const startTrip = async (req, res) => {
     }
 };
 // Driver or rider ends the trip
+// export const completeTrip = async (req, res) => {
+//     const { tripId, rating } = req.body;
+
+//     try {
+//         const trip = await Trip.findOneAndUpdate(
+//             { _id: tripId, status: "in_progress" },
+//             { status: "completed", endTime: new Date() },
+//             { new: true }
+//         );
+
+//         if (!trip) {
+//             return response(res, 400, "Trip is not in progress or already completed.");
+//         }
+
+//         // 🚀 3. UNLOCK BOTH PARTIES
+//         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+//         if (trip.driver) {
+//             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
+//         }
+
+//         if (rating !== undefined) {
+//             trip.ratingByRider = rating;
+//             await trip.save();
+//         }
+//         if (!req.user) {
+//     return response(res, 401, "Unauthorized");
+// }
+
+// const userId = req.user.id || req.user._id;
+
+// // optional strict check
+// if (
+//     trip.driver?.toString() !== userId &&
+//     trip.rider?.toString() !== userId &&
+//     req.user.role !== "admin"
+// ) {
+//     return response(res, 403, "Not allowed to complete this trip.");
+// }
+
+//         const payload = {
+//             tripId: trip._id.toString(),
+//             status: "completed",
+//             fare: trip.fare,
+//         };
+
+//         // 🚀 4. NOTIFY RIDER & DRIVER
+//         emitToUser(trip.rider.toString(), "trip_completed", payload);
+//         if (trip.driver) {
+//             emitToUser(trip.driver.toString(), "trip_completed", payload);
+//         }
+
+//         return response(res, 200, "Trip completed successfully.");
+
+//     } catch (err) {
+//         console.error("❌ completeTrip error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
+
 export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
 
     try {
-        const trip = await Trip.findOneAndUpdate(
-            { _id: tripId, status: "in_progress" },
-            { status: "completed", endTime: new Date() },
-            { new: true }
-        );
+        if (!req.user) {
+            return response(res, 401, "Unauthorized");
+        }
+
+        const userId = req.user.id || req.user._id;
+
+        const trip = await Trip.findOne({
+            _id: tripId,
+            status: "in_progress"
+        });
 
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
 
-        // 🚀 3. UNLOCK BOTH PARTIES
+        // 🔐 AUTH CHECK (FIXED POSITION)
+        if (
+            trip.driver?.toString() !== userId &&
+            trip.rider?.toString() !== userId &&
+            req.user.role !== "admin"
+        ) {
+            return response(res, 403, "Not allowed to complete this trip.");
+        }
+
+        // 💾 UPDATE TRIP
+        trip.status = "completed";
+        trip.endTime = new Date();
+
+        if (rating !== undefined) {
+            trip.ratingByRider = rating;
+        }
+
+        await trip.save();
+
+        // 🔓 UNLOCK USERS
         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+
         if (trip.driver) {
             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
         }
 
-        if (rating !== undefined) {
-            trip.ratingByRider = rating;
-            await trip.save();
-        }
-        if (!req.user) {
-    return response(res, 401, "Unauthorized");
-}
-
-const userId = req.user.id || req.user._id;
-
-// optional strict check
-if (
-    trip.driver?.toString() !== userId &&
-    trip.rider?.toString() !== userId &&
-    req.user.role !== "admin"
-) {
-    return response(res, 403, "Not allowed to complete this trip.");
-}
+        // 🔥 POPULATE FULL TRIP (KEY FIX)
+        const populatedTrip = await Trip.findById(trip._id)
+            .populate("driver", "name phone carModel carNumber")
+            .populate("rider", "name phone");
 
         const payload = {
-            tripId: trip._id.toString(),
-            status: "completed",
-            fare: trip.fare,
+            type: "completed",
+            trip: populatedTrip
         };
 
-        // 🚀 4. NOTIFY RIDER & DRIVER
+        // 🚀 SEND SAME DATA TO BOTH
         emitToUser(trip.rider.toString(), "trip_completed", payload);
+
         if (trip.driver) {
             emitToUser(trip.driver.toString(), "trip_completed", payload);
         }
 
-        return response(res, 200, "Trip completed successfully.");
+        return response(res, 200, "Trip completed successfully.", {
+            trip: populatedTrip
+        });
 
     } catch (err) {
         console.error("❌ completeTrip error:", err);
