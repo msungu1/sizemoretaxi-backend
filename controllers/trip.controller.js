@@ -547,33 +547,25 @@ export const completeTrip = async (req, res) => {
         }
 
         // 🔐 AUTH CHECK (FIXED POSITION)
-        // if (
-        //     trip.driver?.toString() !== userId &&
-        //     trip.rider?.toString() !== userId &&
-        //     req.user.role !== "admin"
-        // ) {
-        //     return response(res, 403, "Not allowed to complete this trip.");
-        // }
-const userId = req.user.id.toString();
+        if (
+            trip.driver?.toString() !== userId &&
+            trip.rider?.toString() !== userId &&
+            req.user.role !== "admin"
+        ) {
+            return response(res, 403, "Not allowed to complete this trip.");
+        }
 
-const driverId = trip.driver ? trip.driver.toString() : null;
-const riderId = trip.rider ? trip.rider.toString() : null;
 
-// 🔍 DEBUG (always runs)
-console.log("USER ID:", userId);
-console.log("DRIVER:", driverId);
-console.log("RIDER:", riderId);
+// // 🔐 AUTH CHECK
+// if (
+//     driverId !== userId &&
+//     riderId !== userId &&
+//     req.user.role !== "admin"
+// ) {
+//     console.log("❌ AUTH FAILED - not allowed to complete trip");
 
-// 🔐 AUTH CHECK
-if (
-    driverId !== userId &&
-    riderId !== userId &&
-    req.user.role !== "admin"
-) {
-    console.log("❌ AUTH FAILED - not allowed to complete trip");
-
-    return response(res, 403, "Not allowed to complete this trip.");
-}
+//     return response(res, 403, "Not allowed to complete this trip.");
+// }
 
         // 💾 UPDATE TRIP
         trip.status = "completed";
