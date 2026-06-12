@@ -668,6 +668,12 @@ console.log("RIDER:", riderId);
 console.log("USER:", userId);
 console.log("ROLE:", req.user.role);
 console.log("======================");
+console.log({
+  tripDriver: trip.driver?.toString(),
+  tripRider: trip.rider?.toString(),
+  user: req.user.id,
+  role: req.user.role
+});
 const isAllowed =
     driverId === userId ||
     riderId === userId ||
