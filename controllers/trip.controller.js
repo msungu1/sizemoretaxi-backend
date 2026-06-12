@@ -664,9 +664,9 @@ if (
     return response(res, 403, "Not allowed to complete this trip.");
 }
         
-        {
-            return response(res, 403, "Not allowed to complete this trip.");
-        }
+        // {
+        //     return response(res, 403, "Not allowed to complete this trip.");
+        // }
 
         // 💾 UPDATE TRIP
         trip.status = "completed";
