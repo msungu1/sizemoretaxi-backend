@@ -471,60 +471,7 @@ export const getAvailableDrivers = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
-// export const startTrip = async (req, res) => {
-//     try {
-//         const { tripId } = req.params;
 
-//         if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
-//             return response(res, 400, "Invalid tripId.");
-//         }
-
-//         const trip = await Trip.findOneAndUpdate(
-//             {
-//                 _id: tripId,
-//                 status: { $in: ["assigned", "accepted"] }
-//             },
-//             {
-//                 status: "in_progress",
-//                 startTime: new Date()
-//             },
-//             { new: true }
-//         );
-
-//         if (!trip) {
-//             return response(res, 400, "Trip cannot be started in its current state.");
-//         }
-
-//         // ✅ Optional: verify driver ownership if you have auth
-//         // if (trip.driver.toString() !== req.user.id.toString()) {
-//         //     return response(res, 403, "Not authorized.");
-//         // }
-
-//         const payload = {
-//             tripId: trip._id.toString(),
-//             pickupLocation: trip.pickupLocation,
-//             dropoffLocation: trip.dropoffLocation,
-//             pickupLabel: trip.pickupLocation?.address,
-//             dropoffLabel: trip.dropoffLocation?.address,
-//             startTime: trip.startTime
-//         };
-
-//         emitToUser(trip.rider.toString(), "trip_started", payload);
-
-//         emitToUser(trip.driver.toString(), "trip_started", {
-//             ...payload,
-//             startTracking: true
-//         });
-
-//         console.log(`🚗 Trip ${tripId} started`);
-
-//         return response(res, 200, "Trip started.");
-
-//     } catch (err) {
-//         console.error("startTrip error:", err.message);
-//         return response(res, 500, "Internal server error.");
-//     }
-// };
 export const startTrip = async (req, res) => {
     try {
         const { tripId } = req.params;
@@ -534,57 +481,38 @@ export const startTrip = async (req, res) => {
         console.log("User:", req.user?.id);
         console.log("Role:", req.user?.role);
 
-        // 1. Validate tripId
         if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
             return response(res, 400, "Invalid tripId.");
         }
 
-        // 2. Find trip
         const trip = await Trip.findById(tripId);
 
         if (!trip) {
             return response(res, 404, "Trip not found.");
         }
 
-        console.log("Trip status:", trip.status);
-        console.log("Trip driver:", trip.driver?.toString());
-
-        // 3. Check allowed status
         if (!["assigned", "accepted"].includes(trip.status)) {
             return response(res, 400, "Trip cannot be started in its current state.");
         }
 
-        // 4. AUTH CHECK (ONLY DRIVER OR ADMIN CAN START)
-        const userId = req.user.id?.toString();
+        const userId = req.user?.id?.toString();
         const driverId = trip.driver?.toString();
 
-        console.log("AUTH CHECK:");
-        console.log("USER:", userId);
-        console.log("DRIVER:", driverId);
-
         if (req.user.role !== "admin" && driverId !== userId) {
-            console.log("❌ Unauthorized start attempt");
             return response(res, 403, "Not authorized to start this trip.");
         }
 
-        // 5. Update trip
         trip.status = "in_progress";
         trip.startTime = new Date();
         await trip.save();
 
-        console.log("✅ Trip marked as in_progress");
-
-        // 6. Build payload
         const payload = {
             tripId: trip._id.toString(),
             pickupLocation: trip.pickupLocation,
             dropoffLocation: trip.dropoffLocation,
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
             startTime: trip.startTime
         };
 
-        // 7. Emit socket events
         emitToUser(trip.rider.toString(), "trip_started", payload);
 
         emitToUser(trip.driver.toString(), "trip_started", {
@@ -592,12 +520,7 @@ export const startTrip = async (req, res) => {
             startTracking: true
         });
 
-        console.log(`🚗 Trip ${tripId} started successfully`);
-
-        // 8. Response
-        return response(res, 200, "Trip started successfully.", {
-            trip
-        });
+        return response(res, 200, "Trip started successfully.", { trip });
 
     } catch (err) {
         console.error("❌ startTrip error:", err);
@@ -611,29 +534,20 @@ export const completeTrip = async (req, res) => {
         console.log("===== COMPLETE REQUEST =====");
         console.log("Received tripId:", tripId);
 
-        // 1. Auth check first
         if (!req.user) {
             return response(res, 401, "Unauthorized");
         }
 
         const userId = req.user.id?.toString() || req.user._id?.toString();
 
-        console.log("Logged User:", userId);
-        console.log("User Role:", req.user.role);
-        console.log("============================");
-
-        // 2. Validate tripId
         if (!tripId) {
             return response(res, 400, "tripId is required");
         }
 
-        // 3. Find trip
         const trip = await Trip.findOne({
             _id: tripId,
             status: "in_progress"
         });
-
-        console.log("Trip Found:", trip);
 
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
@@ -642,27 +556,15 @@ export const completeTrip = async (req, res) => {
         const driverId = trip.driver?.toString();
         const riderId = trip.rider?.toString();
 
-        console.log("===== AUTH DEBUG =====");
-        console.log("DRIVER:", driverId);
-        console.log("RIDER:", riderId);
-        console.log("USER:", userId);
-        console.log("ROLE:", req.user.role);
-        console.log("======================");
-
-        // 4. AUTH CHECK (FIXED & CLEAN)
         const isAllowed =
             driverId === userId ||
             riderId === userId ||
             req.user.role === "admin";
 
         if (!isAllowed) {
-            console.log("❌ AUTH FAILED - Not allowed");
             return response(res, 403, "Not allowed to complete this trip.");
         }
 
-        console.log("✅ AUTH PASSED");
-
-        // 5. Update trip
         trip.status = "completed";
         trip.endTime = new Date();
 
@@ -672,14 +574,12 @@ export const completeTrip = async (req, res) => {
 
         await trip.save();
 
-        // 6. Unlock users
         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
 
         if (trip.driver) {
             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
         }
 
-        // 7. Populate trip
         const populatedTrip = await Trip.findById(trip._id)
             .populate("driver", "name phone carModel carNumber")
             .populate("rider", "name phone");
@@ -689,16 +589,12 @@ export const completeTrip = async (req, res) => {
             trip: populatedTrip
         };
 
-        // 8. Emit socket events
         emitToUser(trip.rider.toString(), "trip_completed", payload);
 
         if (trip.driver) {
             emitToUser(trip.driver.toString(), "trip_completed", payload);
         }
 
-        console.log("🚗 Trip completed successfully");
-
-        // 9. Response
         return response(res, 200, "Trip completed successfully.", {
             trip: populatedTrip
         });
@@ -709,129 +605,6 @@ export const completeTrip = async (req, res) => {
     }
 };
 
-// export const completeTrip = async (req, res) => {
-//     try {
-//         const { tripId, rating } = req.body;
-
-//         console.log("===== COMPLETE REQUEST =====");
-//         console.log("Received tripId:", tripId);
-
-//         if (!req.user) {
-//             return response(res, 401, "Unauthorized");
-//         }
-
-//         const userId = req.user.id || req.user._id;
-
-//         console.log("Logged User:", userId);
-//         console.log("============================");
-
-//         const trip = await Trip.findOne({
-//             _id: tripId,
-//             status: "in_progress"
-//         });
-
-//         console.log("Trip Found:", trip);
-
-//         if (!trip) {
-//             return response(res, 400, "Trip is not in progress or already completed.");
-//         }
-
-//         // 🔐 AUTH CHECK
-//         // if (
-//         //     trip.driver?.toString() !== userId &&
-//         //     trip.rider?.toString() !== userId &&
-//         //     req.user.role !== "admin"
-//         // ) 
-//         const driverId = trip.driver ? trip.driver.toString() : null;
-// const riderId = trip.rider ? trip.rider.toString() : null;
-// const userId = req.user.id ? req.user.id.toString() : null;
-// console.log("===== AUTH DEBUG =====");
-// console.log("DRIVER ID:", driverId?.toString());
-// console.log("RIDER ID:", riderId?.toString());
-// console.log("USER ID:", userId);
-// console.log("USER ROLE:", req.user.role);
-// console.log("MATCH DRIVER:", driverId?.toString() === userId);
-// console.log("MATCH RIDER:", riderId?.toString() === userId);
-// console.log("DRIVER:", driverId);
-// console.log("RIDER:", riderId);
-// console.log("USER:", userId);
-// console.log("ROLE:", req.user.role);
-// console.log("======================");
-// console.log({
-//   tripDriver: trip.driver?.toString(),
-//   tripRider: trip.rider?.toString(),
-//   user: req.user.id,
-//   role: req.user.role
-// });
-// const isAllowed =
-//     driverId === userId ||
-//     riderId === userId ||
-//     req.user.role === "admin";
-
-// if (!isAllowed) {
-//     return response(res, 403, "Not allowed to complete this trip.");
-// }
-// if (
-//     // driverId?.toString() !== userId &&
-//     // riderId?.toString() !== userId &&
-//     // req.user.role !== "admin"
-//     driverId !== userId &&
-//     riderId !== userId &&
-//     req.user.role !== "admin"
-// ) {
-//     console.log("❌ AUTH FAILED");
-//     console.log("❌ BLOCKED REASON:");
-//     console.log("driver match:", driverId === userId);
-//     console.log("rider match:", riderId === userId);
-//     console.log("role:", req.user.role);
-//     return response(res, 403, "Not allowed to complete this trip.");
-// }console.log("✅ AUTH PASSED");
-        
-        
-
-//         // 💾 UPDATE TRIP
-//         trip.status = "completed";
-//         trip.endTime = new Date();
-
-//         if (rating !== undefined) {
-//             trip.ratingByRider = rating;
-//         }
-
-//         await trip.save();
-
-//         // 🔓 UNLOCK USERS
-//         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
-
-//         if (trip.driver) {
-//             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
-//         }
-
-//         // 🔥 POPULATE TRIP
-//         const populatedTrip = await Trip.findById(trip._id)
-//             .populate("driver", "name phone carModel carNumber")
-//             .populate("rider", "name phone");
-
-//         const payload = {
-//             type: "completed",
-//             trip: populatedTrip
-//         };
-
-//         // 🚀 SOCKET EMIT
-//         emitToUser(trip.rider.toString(), "trip_completed", payload);
-
-//         if (trip.driver) {
-//             emitToUser(trip.driver.toString(), "trip_completed", payload);
-//         }
-
-//         return response(res, 200, "Trip completed successfully.", {
-//             trip: populatedTrip
-//         });
-
-//     } catch (err) {
-//         console.error("❌ completeTrip error:", err);
-//         return response(res, 500, "Internal server error.");
-//     }
-// };
 export const getTripById = async (req, res) => {
     const { tripId } = req.params;
 
@@ -973,93 +746,7 @@ export const getTripActivity = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
-// export const assignTrip = async (req, res) => {
-//     try {
-//         const { tripId, driverId } = req.body;
 
-//         console.log("Assigning:", tripId, driverId);
-
-//         const existingTrip = await Trip.findById(tripId);
-
-//         console.log("Trip Before Assign:", existingTrip);
-
-//         const trip = await Trip.findOneAndUpdate(
-//             {
-//                 _id: tripId,
-//                 status: { $in: ["requested", "accepted"] }
-//             },
-//             {
-//                 status: "assigned",
-//                 driver: driverId
-//             },
-//             { new: true }
-//         );
-
-//         if (!trip) {
-//             return response(
-//                 res,
-//                 400,
-//                 "Trip not found or not ready for assignment."
-//             );
-//         }
-
-//         const driver = await User.findById(driverId);
-
-//         emitToUser(driverId, "ride_assigned", {
-//             tripId: trip._id.toString(),
-//             status: "assigned",
-
-//             pickup: trip.pickupLocation,
-//             dropoff: trip.dropoffLocation,
-//              // 💰 MONEY
-//             fare: trip.fare,
-//             vehicleType: trip.vehicleType,
-
-//             distance: trip.distanceText || null,
-//             duration: trip.durationText || null,
-
-//              rider: {
-//          id: rider._id,
-//         name: userRecord.name,
-//         phone: userRecord.phone
-//     }
-
-//         });
-
-//         emitToUser(trip.rider.toString(), "driver_assigned", {
-//             tripId: trip._id.toString(),
-//             status: "driver_assigned",
-//             driver: {
-//                 name: driver.name,
-//                 phone: driver.phone,
-//                 carModel: driver.carModel,
-//                 carNumber: driver.carNumber,
-//             },
-//             message: "Driver is on the way"
-//         });
-
-//         emitToAdmin("driver_assigned", {
-//             tripId: trip._id.toString(),
-//             driverId
-//         });
-
-//         return response(
-//             res,
-//             200,
-//             "Driver assigned successfully.",
-//             { trip }
-//         );
-
-//     } catch (err) {
-//         console.error("assignTrip error:", err);
-
-//         return response(
-//             res,
-//             500,
-//             "Internal server error."
-//         );
-//     }
-// };
 export const assignTrip = async (req, res) => {
     try {
         const { tripId, driverId } = req.body;
