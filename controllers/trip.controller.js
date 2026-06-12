@@ -526,35 +526,128 @@ export const startTrip = async (req, res) => {
     }
 };
 
-export const completeTrip = async (req, res) => {
-        const { tripId, rating } = req.body;
-    console.log("===== COMPLETE REQUEST =====");
-console.log("Received tripId:", tripId);
-console.log("Logged User:", userId);
-console.log("============================");
-    const { tripId, rating } = req.body;
+// export const completeTrip = async (req, res) => {
 
+//         const { tripId, rating } = req.body;
+//     console.log("===== COMPLETE REQUEST =====");
+// console.log("Received tripId:", tripId);
+// console.log("Logged User:", userId);
+// console.log("============================");
+//     const { tripId, rating } = req.body;
+
+//     try {
+//         if (!req.user) {
+//             return response(res, 401, "Unauthorized");
+//         }
+
+//         const userId = req.user.id || req.user._id;
+
+//         const trip = await Trip.findOne({
+            
+//             _id: tripId,
+//             status: "in_progress"
+//         });
+//         console.log("Trip Found:", trip);
+
+
+
+//         if (!trip) {
+//             return response(res, 400, "Trip is not in progress or already completed.");
+//         }
+
+//         // 🔐 AUTH CHECK (FIXED POSITION)
+//         if (
+//             trip.driver?.toString() !== userId &&
+//             trip.rider?.toString() !== userId &&
+//             req.user.role !== "admin"
+//         ) {
+//             return response(res, 403, "Not allowed to complete this trip.");
+//         }
+
+
+// // // 🔐 AUTH CHECK
+// // if (
+// //     driverId !== userId &&
+// //     riderId !== userId &&
+// //     req.user.role !== "admin"
+// // ) {
+// //     console.log("❌ AUTH FAILED - not allowed to complete trip");
+
+// //     return response(res, 403, "Not allowed to complete this trip.");
+// // }
+
+//         // 💾 UPDATE TRIP
+//         trip.status = "completed";
+//         trip.endTime = new Date();
+
+//         if (rating !== undefined) {
+//             trip.ratingByRider = rating;
+//         }
+
+//         await trip.save();
+
+//         // 🔓 UNLOCK USERS
+//         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+
+//         if (trip.driver) {
+//             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
+//         }
+
+//         // 🔥 POPULATE FULL TRIP (KEY FIX)
+//         const populatedTrip = await Trip.findById(trip._id)
+//             .populate("driver", "name phone carModel carNumber")
+//             .populate("rider", "name phone");
+
+//         const payload = {
+//             type: "completed",
+//             trip: populatedTrip
+//         };
+
+//         // 🚀 SEND SAME DATA TO BOTH
+//         emitToUser(trip.rider.toString(), "trip_completed", payload);
+
+//         if (trip.driver) {
+//             emitToUser(trip.driver.toString(), "trip_completed", payload);
+//         }
+
+//         return response(res, 200, "Trip completed successfully.", {
+//             trip: populatedTrip
+//         });
+
+//     } catch (err) {
+//         console.error("❌ completeTrip error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
+
+export const completeTrip = async (req, res) => {
     try {
+        const { tripId, rating } = req.body;
+
+        console.log("===== COMPLETE REQUEST =====");
+        console.log("Received tripId:", tripId);
+
         if (!req.user) {
             return response(res, 401, "Unauthorized");
         }
 
         const userId = req.user.id || req.user._id;
 
+        console.log("Logged User:", userId);
+        console.log("============================");
+
         const trip = await Trip.findOne({
-            
             _id: tripId,
             status: "in_progress"
         });
+
         console.log("Trip Found:", trip);
-
-
 
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
 
-        // 🔐 AUTH CHECK (FIXED POSITION)
+        // 🔐 AUTH CHECK
         if (
             trip.driver?.toString() !== userId &&
             trip.rider?.toString() !== userId &&
@@ -562,18 +655,6 @@ console.log("============================");
         ) {
             return response(res, 403, "Not allowed to complete this trip.");
         }
-
-
-// // 🔐 AUTH CHECK
-// if (
-//     driverId !== userId &&
-//     riderId !== userId &&
-//     req.user.role !== "admin"
-// ) {
-//     console.log("❌ AUTH FAILED - not allowed to complete trip");
-
-//     return response(res, 403, "Not allowed to complete this trip.");
-// }
 
         // 💾 UPDATE TRIP
         trip.status = "completed";
@@ -592,7 +673,7 @@ console.log("============================");
             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
         }
 
-        // 🔥 POPULATE FULL TRIP (KEY FIX)
+        // 🔥 POPULATE TRIP
         const populatedTrip = await Trip.findById(trip._id)
             .populate("driver", "name phone carModel carNumber")
             .populate("rider", "name phone");
@@ -602,7 +683,7 @@ console.log("============================");
             trip: populatedTrip
         };
 
-        // 🚀 SEND SAME DATA TO BOTH
+        // 🚀 SOCKET EMIT
         emitToUser(trip.rider.toString(), "trip_completed", payload);
 
         if (trip.driver) {
