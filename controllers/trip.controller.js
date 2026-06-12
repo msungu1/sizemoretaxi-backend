@@ -548,8 +548,8 @@ export const completeTrip = async (req, res) => {
             _id: tripId,
     status: { $in: ["in_progress", "assigned"] }        });
 
-        if (!trip) {
-            return response(res, 400, "Trip is not in progress or already completed.");
+        if (!trip || trip.status === "completed") {
+            return response(res, 400, "Trip already completed.");
         }
 const userId = (req.user.id || req.user._id)?.toString();
         const driverId = trip.driver?.toString();
