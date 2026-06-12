@@ -648,11 +648,23 @@ export const completeTrip = async (req, res) => {
         }
 
         // 🔐 AUTH CHECK
-        if (
-            trip.driver?.toString() !== userId &&
-            trip.rider?.toString() !== userId &&
-            req.user.role !== "admin"
-        ) {
+        // if (
+        //     trip.driver?.toString() !== userId &&
+        //     trip.rider?.toString() !== userId &&
+        //     req.user.role !== "admin"
+        // ) 
+        const driverId = trip.driver?.id || trip.driver;
+const riderId = trip.rider?.id || trip.rider;
+
+if (
+    driverId?.toString() !== userId &&
+    riderId?.toString() !== userId &&
+    req.user.role !== "admin"
+) {
+    return response(res, 403, "Not allowed to complete this trip.");
+}
+        
+        {
             return response(res, 403, "Not allowed to complete this trip.");
         }
 
