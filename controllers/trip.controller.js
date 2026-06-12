@@ -671,7 +671,7 @@ if (
 ) {
     console.log("❌ AUTH FAILED");
     return response(res, 403, "Not allowed to complete this trip.");
-}
+}console.log("✅ AUTH PASSED");
         
         
 
