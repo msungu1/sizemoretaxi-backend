@@ -525,7 +525,85 @@ export const startTrip = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+export const startTrip = async (req, res) => {
+    try {
+        const { tripId } = req.params;
 
+        console.log("===== START TRIP =====");
+        console.log("TripId:", tripId);
+        console.log("User:", req.user?.id);
+        console.log("Role:", req.user?.role);
+
+        // 1. Validate tripId
+        if (!tripId || !mongoose.Types.ObjectId.isValid(tripId)) {
+            return response(res, 400, "Invalid tripId.");
+        }
+
+        // 2. Find trip
+        const trip = await Trip.findById(tripId);
+
+        if (!trip) {
+            return response(res, 404, "Trip not found.");
+        }
+
+        console.log("Trip status:", trip.status);
+        console.log("Trip driver:", trip.driver?.toString());
+
+        // 3. Check allowed status
+        if (!["assigned", "accepted"].includes(trip.status)) {
+            return response(res, 400, "Trip cannot be started in its current state.");
+        }
+
+        // 4. AUTH CHECK (ONLY DRIVER OR ADMIN CAN START)
+        const userId = req.user.id?.toString();
+        const driverId = trip.driver?.toString();
+
+        console.log("AUTH CHECK:");
+        console.log("USER:", userId);
+        console.log("DRIVER:", driverId);
+
+        if (req.user.role !== "admin" && driverId !== userId) {
+            console.log("❌ Unauthorized start attempt");
+            return response(res, 403, "Not authorized to start this trip.");
+        }
+
+        // 5. Update trip
+        trip.status = "in_progress";
+        trip.startTime = new Date();
+        await trip.save();
+
+        console.log("✅ Trip marked as in_progress");
+
+        // 6. Build payload
+        const payload = {
+            tripId: trip._id.toString(),
+            pickupLocation: trip.pickupLocation,
+            dropoffLocation: trip.dropoffLocation,
+            pickupLabel: trip.pickupLocation?.address,
+            dropoffLabel: trip.dropoffLocation?.address,
+            startTime: trip.startTime
+        };
+
+        // 7. Emit socket events
+        emitToUser(trip.rider.toString(), "trip_started", payload);
+
+        emitToUser(trip.driver.toString(), "trip_started", {
+            ...payload,
+            startTracking: true
+        });
+
+        console.log(`🚗 Trip ${tripId} started successfully`);
+
+        // 8. Response
+        return response(res, 200, "Trip started successfully.", {
+            trip
+        });
+
+    } catch (err) {
+        console.error("❌ startTrip error:", err);
+        return response(res, 500, "Internal server error.");
+    }
+};
 // export const completeTrip = async (req, res) => {
 
 //         const { tripId, rating } = req.body;
@@ -620,129 +698,129 @@ export const startTrip = async (req, res) => {
 //     }
 // };
 
-export const completeTrip = async (req, res) => {
-    try {
-        const { tripId, rating } = req.body;
+// export const completeTrip = async (req, res) => {
+//     try {
+//         const { tripId, rating } = req.body;
 
-        console.log("===== COMPLETE REQUEST =====");
-        console.log("Received tripId:", tripId);
+//         console.log("===== COMPLETE REQUEST =====");
+//         console.log("Received tripId:", tripId);
 
-        if (!req.user) {
-            return response(res, 401, "Unauthorized");
-        }
+//         if (!req.user) {
+//             return response(res, 401, "Unauthorized");
+//         }
 
-        const userId = req.user.id || req.user._id;
+//         const userId = req.user.id || req.user._id;
 
-        console.log("Logged User:", userId);
-        console.log("============================");
+//         console.log("Logged User:", userId);
+//         console.log("============================");
 
-        const trip = await Trip.findOne({
-            _id: tripId,
-            status: "in_progress"
-        });
+//         const trip = await Trip.findOne({
+//             _id: tripId,
+//             status: "in_progress"
+//         });
 
-        console.log("Trip Found:", trip);
+//         console.log("Trip Found:", trip);
 
-        if (!trip) {
-            return response(res, 400, "Trip is not in progress or already completed.");
-        }
+//         if (!trip) {
+//             return response(res, 400, "Trip is not in progress or already completed.");
+//         }
 
-        // 🔐 AUTH CHECK
-        // if (
-        //     trip.driver?.toString() !== userId &&
-        //     trip.rider?.toString() !== userId &&
-        //     req.user.role !== "admin"
-        // ) 
-        const driverId = trip.driver ? trip.driver.toString() : null;
-const riderId = trip.rider ? trip.rider.toString() : null;
-const userId = req.user.id ? req.user.id.toString() : null;
-console.log("===== AUTH DEBUG =====");
-console.log("DRIVER ID:", driverId?.toString());
-console.log("RIDER ID:", riderId?.toString());
-console.log("USER ID:", userId);
-console.log("USER ROLE:", req.user.role);
-console.log("MATCH DRIVER:", driverId?.toString() === userId);
-console.log("MATCH RIDER:", riderId?.toString() === userId);
-console.log("DRIVER:", driverId);
-console.log("RIDER:", riderId);
-console.log("USER:", userId);
-console.log("ROLE:", req.user.role);
-console.log("======================");
-console.log({
-  tripDriver: trip.driver?.toString(),
-  tripRider: trip.rider?.toString(),
-  user: req.user.id,
-  role: req.user.role
-});
-const isAllowed =
-    driverId === userId ||
-    riderId === userId ||
-    req.user.role === "admin";
+//         // 🔐 AUTH CHECK
+//         // if (
+//         //     trip.driver?.toString() !== userId &&
+//         //     trip.rider?.toString() !== userId &&
+//         //     req.user.role !== "admin"
+//         // ) 
+//         const driverId = trip.driver ? trip.driver.toString() : null;
+// const riderId = trip.rider ? trip.rider.toString() : null;
+// const userId = req.user.id ? req.user.id.toString() : null;
+// console.log("===== AUTH DEBUG =====");
+// console.log("DRIVER ID:", driverId?.toString());
+// console.log("RIDER ID:", riderId?.toString());
+// console.log("USER ID:", userId);
+// console.log("USER ROLE:", req.user.role);
+// console.log("MATCH DRIVER:", driverId?.toString() === userId);
+// console.log("MATCH RIDER:", riderId?.toString() === userId);
+// console.log("DRIVER:", driverId);
+// console.log("RIDER:", riderId);
+// console.log("USER:", userId);
+// console.log("ROLE:", req.user.role);
+// console.log("======================");
+// console.log({
+//   tripDriver: trip.driver?.toString(),
+//   tripRider: trip.rider?.toString(),
+//   user: req.user.id,
+//   role: req.user.role
+// });
+// const isAllowed =
+//     driverId === userId ||
+//     riderId === userId ||
+//     req.user.role === "admin";
 
-if (!isAllowed) {
-    return response(res, 403, "Not allowed to complete this trip.");
-}
-if (
-    // driverId?.toString() !== userId &&
-    // riderId?.toString() !== userId &&
-    // req.user.role !== "admin"
-    driverId !== userId &&
-    riderId !== userId &&
-    req.user.role !== "admin"
-) {
-    console.log("❌ AUTH FAILED");
-    console.log("❌ BLOCKED REASON:");
-    console.log("driver match:", driverId === userId);
-    console.log("rider match:", riderId === userId);
-    console.log("role:", req.user.role);
-    return response(res, 403, "Not allowed to complete this trip.");
-}console.log("✅ AUTH PASSED");
+// if (!isAllowed) {
+//     return response(res, 403, "Not allowed to complete this trip.");
+// }
+// if (
+//     // driverId?.toString() !== userId &&
+//     // riderId?.toString() !== userId &&
+//     // req.user.role !== "admin"
+//     driverId !== userId &&
+//     riderId !== userId &&
+//     req.user.role !== "admin"
+// ) {
+//     console.log("❌ AUTH FAILED");
+//     console.log("❌ BLOCKED REASON:");
+//     console.log("driver match:", driverId === userId);
+//     console.log("rider match:", riderId === userId);
+//     console.log("role:", req.user.role);
+//     return response(res, 403, "Not allowed to complete this trip.");
+// }console.log("✅ AUTH PASSED");
         
         
 
-        // 💾 UPDATE TRIP
-        trip.status = "completed";
-        trip.endTime = new Date();
+//         // 💾 UPDATE TRIP
+//         trip.status = "completed";
+//         trip.endTime = new Date();
 
-        if (rating !== undefined) {
-            trip.ratingByRider = rating;
-        }
+//         if (rating !== undefined) {
+//             trip.ratingByRider = rating;
+//         }
 
-        await trip.save();
+//         await trip.save();
 
-        // 🔓 UNLOCK USERS
-        await User.findByIdAndUpdate(trip.rider, { isRiding: false });
+//         // 🔓 UNLOCK USERS
+//         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
 
-        if (trip.driver) {
-            await User.findByIdAndUpdate(trip.driver, { isRiding: false });
-        }
+//         if (trip.driver) {
+//             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
+//         }
 
-        // 🔥 POPULATE TRIP
-        const populatedTrip = await Trip.findById(trip._id)
-            .populate("driver", "name phone carModel carNumber")
-            .populate("rider", "name phone");
+//         // 🔥 POPULATE TRIP
+//         const populatedTrip = await Trip.findById(trip._id)
+//             .populate("driver", "name phone carModel carNumber")
+//             .populate("rider", "name phone");
 
-        const payload = {
-            type: "completed",
-            trip: populatedTrip
-        };
+//         const payload = {
+//             type: "completed",
+//             trip: populatedTrip
+//         };
 
-        // 🚀 SOCKET EMIT
-        emitToUser(trip.rider.toString(), "trip_completed", payload);
+//         // 🚀 SOCKET EMIT
+//         emitToUser(trip.rider.toString(), "trip_completed", payload);
 
-        if (trip.driver) {
-            emitToUser(trip.driver.toString(), "trip_completed", payload);
-        }
+//         if (trip.driver) {
+//             emitToUser(trip.driver.toString(), "trip_completed", payload);
+//         }
 
-        return response(res, 200, "Trip completed successfully.", {
-            trip: populatedTrip
-        });
+//         return response(res, 200, "Trip completed successfully.", {
+//             trip: populatedTrip
+//         });
 
-    } catch (err) {
-        console.error("❌ completeTrip error:", err);
-        return response(res, 500, "Internal server error.");
-    }
-};
+//     } catch (err) {
+//         console.error("❌ completeTrip error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
 export const getTripById = async (req, res) => {
     const { tripId } = req.params;
 
