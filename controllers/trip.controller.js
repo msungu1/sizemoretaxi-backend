@@ -546,10 +546,11 @@ export const completeTrip = async (req, res) => {
 
         const trip = await Trip.findOne({
             _id: tripId,
-    status: { $in: ["in_progress", "assigned"] }        });
+            status: "in_progress"
+        });
 
-        if (!trip || trip.status === "completed") {
-            return response(res, 400, "Trip already completed.");
+        if (!trip) {
+            return response(res, 400, "Trip is not in progress or already completed.");
         }
 const userId = (req.user.id || req.user._id)?.toString();
         const driverId = trip.driver?.toString();
@@ -567,7 +568,6 @@ const userId = (req.user.id || req.user._id)?.toString();
             req.user.role === "admin";
 
         if (!isAllowed) {
-                console.log("❌ BLOCKED COMPLETE TRIP");
             return response(res, 403, "Not allowed to complete this trip.");
         }
 
