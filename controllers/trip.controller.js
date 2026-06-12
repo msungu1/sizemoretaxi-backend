@@ -669,6 +669,7 @@ if (
     riderId?.toString() !== userId &&
     req.user.role !== "admin"
 ) {
+    console.log("❌ AUTH FAILED");
     return response(res, 403, "Not allowed to complete this trip.");
 }
         
