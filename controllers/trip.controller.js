@@ -526,7 +526,6 @@ export const startTrip = async (req, res) => {
     }
 };
 
-
 export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
 
@@ -545,7 +544,12 @@ export const completeTrip = async (req, res) => {
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
-
+console.log("===== COMPLETE TRIP DEBUG =====");
+console.log("Trip Driver:", trip.driver?.toString());
+console.log("Trip Rider:", trip.rider?.toString());
+console.log("Logged User:", userId);
+console.log("Role:", req.user.role);
+console.log("==============================");
         // 🔐 AUTH CHECK (FIXED POSITION)
         if (
             trip.driver?.toString() !== userId &&
