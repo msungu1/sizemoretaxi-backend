@@ -546,8 +546,7 @@ export const completeTrip = async (req, res) => {
 
         const trip = await Trip.findOne({
             _id: tripId,
-            status: "in_progress"
-        });
+    status: { $in: ["in_progress", "assigned"] }        });
 
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
