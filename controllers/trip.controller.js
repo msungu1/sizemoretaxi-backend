@@ -670,6 +670,10 @@ if (
     req.user.role !== "admin"
 ) {
     console.log("❌ AUTH FAILED");
+    console.log("❌ BLOCKED REASON:");
+    console.log("driver match:", driverId === userId);
+    console.log("rider match:", riderId === userId);
+    console.log("role:", req.user.role);
     return response(res, 403, "Not allowed to complete this trip.");
 }console.log("✅ AUTH PASSED");
         
