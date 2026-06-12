@@ -655,6 +655,14 @@ export const completeTrip = async (req, res) => {
         // ) 
         const driverId = trip.driver?.id || trip.driver;
 const riderId = trip.rider?.id || trip.rider;
+console.log("===== AUTH DEBUG =====");
+console.log("DRIVER ID:", driverId?.toString());
+console.log("RIDER ID:", riderId?.toString());
+console.log("USER ID:", userId);
+console.log("USER ROLE:", req.user.role);
+console.log("MATCH DRIVER:", driverId?.toString() === userId);
+console.log("MATCH RIDER:", riderId?.toString() === userId);
+console.log("======================");
 
 if (
     driverId?.toString() !== userId &&
@@ -664,9 +672,7 @@ if (
     return response(res, 403, "Not allowed to complete this trip.");
 }
         
-        // {
-        //     return response(res, 403, "Not allowed to complete this trip.");
-        // }
+        
 
         // 💾 UPDATE TRIP
         trip.status = "completed";
