@@ -653,8 +653,8 @@ export const completeTrip = async (req, res) => {
         //     trip.rider?.toString() !== userId &&
         //     req.user.role !== "admin"
         // ) 
-        const driverId = trip.driver?.id || trip.driver;
-const riderId = trip.rider?.id || trip.rider;
+        const driverId = trip.driver?.toString();
+const riderId = trip.rider?.toString();
 console.log("===== AUTH DEBUG =====");
 console.log("DRIVER ID:", driverId?.toString());
 console.log("RIDER ID:", riderId?.toString());
