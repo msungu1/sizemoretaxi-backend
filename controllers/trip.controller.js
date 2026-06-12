@@ -527,6 +527,7 @@ export const startTrip = async (req, res) => {
 };
 
 export const completeTrip = async (req, res) => {
+        const { tripId, rating } = req.body;
     console.log("===== COMPLETE REQUEST =====");
 console.log("Received tripId:", tripId);
 console.log("Logged User:", userId);
