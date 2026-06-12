@@ -665,8 +665,11 @@ console.log("MATCH RIDER:", riderId?.toString() === userId);
 console.log("======================");
 
 if (
-    driverId?.toString() !== userId &&
-    riderId?.toString() !== userId &&
+    // driverId?.toString() !== userId &&
+    // riderId?.toString() !== userId &&
+    // req.user.role !== "admin"
+    driverId !== userId &&
+    riderId !== userId &&
     req.user.role !== "admin"
 ) {
     console.log("❌ AUTH FAILED");
