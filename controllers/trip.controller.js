@@ -527,6 +527,10 @@ export const startTrip = async (req, res) => {
 };
 
 export const completeTrip = async (req, res) => {
+    console.log("===== COMPLETE REQUEST =====");
+console.log("Received tripId:", tripId);
+console.log("Logged User:", userId);
+console.log("============================");
     const { tripId, rating } = req.body;
 
     try {
@@ -537,19 +541,18 @@ export const completeTrip = async (req, res) => {
         const userId = req.user.id || req.user._id;
 
         const trip = await Trip.findOne({
+            
             _id: tripId,
             status: "in_progress"
         });
+        console.log("Trip Found:", trip);
+
+
 
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
-console.log("===== COMPLETE TRIP DEBUG =====");
-console.log("Trip Driver:", trip.driver?.toString());
-console.log("Trip Rider:", trip.rider?.toString());
-console.log("Logged User:", userId);
-console.log("Role:", req.user.role);
-console.log("==============================");
+
         // 🔐 AUTH CHECK (FIXED POSITION)
         if (
             trip.driver?.toString() !== userId &&
