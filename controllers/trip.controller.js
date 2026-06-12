@@ -653,8 +653,9 @@ export const completeTrip = async (req, res) => {
         //     trip.rider?.toString() !== userId &&
         //     req.user.role !== "admin"
         // ) 
-        const driverId = trip.driver?.toString();
-const riderId = trip.rider?.toString();
+        const driverId = trip.driver ? trip.driver.toString() : null;
+const riderId = trip.rider ? trip.rider.toString() : null;
+const userId = req.user.id ? req.user.id.toString() : null;
 console.log("===== AUTH DEBUG =====");
 console.log("DRIVER ID:", driverId?.toString());
 console.log("RIDER ID:", riderId?.toString());
@@ -662,8 +663,19 @@ console.log("USER ID:", userId);
 console.log("USER ROLE:", req.user.role);
 console.log("MATCH DRIVER:", driverId?.toString() === userId);
 console.log("MATCH RIDER:", riderId?.toString() === userId);
+console.log("DRIVER:", driverId);
+console.log("RIDER:", riderId);
+console.log("USER:", userId);
+console.log("ROLE:", req.user.role);
 console.log("======================");
+const isAllowed =
+    driverId === userId ||
+    riderId === userId ||
+    req.user.role === "admin";
 
+if (!isAllowed) {
+    return response(res, 403, "Not allowed to complete this trip.");
+}
 if (
     // driverId?.toString() !== userId &&
     // riderId?.toString() !== userId &&
