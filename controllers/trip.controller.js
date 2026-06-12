@@ -552,16 +552,23 @@ export const completeTrip = async (req, res) => {
         if (!trip) {
             return response(res, 400, "Trip is not in progress or already completed.");
         }
-
+const userId = (req.user.id || req.user._id)?.toString();
         const driverId = trip.driver?.toString();
         const riderId = trip.rider?.toString();
 
+        console.log("AUTH DEBUG:", {
+    userId,
+    driverId,
+    riderId,
+    role: req.user.role
+});
         const isAllowed =
             driverId === userId ||
             riderId === userId ||
             req.user.role === "admin";
 
         if (!isAllowed) {
+                console.log("❌ BLOCKED COMPLETE TRIP");
             return response(res, 403, "Not allowed to complete this trip.");
         }
 
