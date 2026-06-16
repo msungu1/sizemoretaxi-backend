@@ -527,89 +527,7 @@ export const startTrip = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
-// export const completeTrip = async (req, res) => {
-//     try {
-//         const { tripId, rating } = req.body;
 
-//         console.log("===== COMPLETE REQUEST =====");
-//         console.log("Received tripId:", tripId);
-
-//         if (!req.user) {
-//             return response(res, 401, "Unauthorized");
-//         }
-
-//         const userId = req.user.id?.toString() || req.user._id?.toString();
-
-//         if (!tripId) {
-//             return response(res, 400, "tripId is required");
-//         }
-
-//         const trip = await Trip.findOne({
-//             _id: tripId,
-//             status: "in_progress"
-//         });
-
-//         if (!trip) {
-//             return response(res, 400, "Trip is not in progress or already completed.");
-//         }
-// const userId = (req.user.id || req.user._id)?.toString();
-//         const driverId = trip.driver?.toString();
-//         const riderId = trip.rider?.toString();
-
-//         console.log("AUTH DEBUG:", {
-//     userId,
-//     driverId,
-//     riderId,
-//     role: req.user.role
-// });
-//         const isAllowed =
-//             driverId === userId ||
-//             riderId === userId ||
-//             req.user.role === "admin";
-
-//         if (!isAllowed) {
-//             return response(res, 403, "Not allowed to complete this trip.");
-//         }
-
-//         trip.status = "completed";
-//         trip.endTime = new Date();
-
-//         if (rating !== undefined) {
-//             trip.ratingByRider = rating;
-//         }
-
-//         await trip.save();
-
-//         await User.findByIdAndUpdate(trip.rider, { isRiding: false });
-
-//         if (trip.driver) {
-//             await User.findByIdAndUpdate(trip.driver, { isRiding: false });
-//         }
-
-//         const populatedTrip = await Trip.findById(trip._id)
-//             .populate("driver", "name phone carModel carNumber")
-//             .populate("rider", "name phone");
-
-//         const payload = {
-//             type: "completed",
-//             trip: populatedTrip
-//         };
-
-//         emitToUser(trip.rider.toString(), "trip_completed", payload);
-
-//         if (trip.driver) {
-//             emitToUser(trip.driver.toString(), "trip_completed", payload);
-//         }
-
-//         return response(res, 200, "Trip completed successfully.", {
-//             trip: populatedTrip
-//         });
-
-//     } catch (err) {
-//         console.error("❌ completeTrip error:", err);
-//         return response(res, 500, "Internal server error.");
-//     }
-// };
 // Driver or rider ends the trip
 export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
@@ -627,14 +545,18 @@ export const completeTrip = async (req, res) => {
         await trip.populate("driver", "name phone carModel carNumber");
 
         // Notify rider and driver
-        emitToUser(trip.rider?.toString(), "trip_completed", {
-            tripId: trip._id,
-            endTime: trip.endTime,
-            driver: trip.driver,
-        });
+       emitToUser(trip.rider?.toString(), "trip_completed", {
+    type: "trip_completed",
+    status: "completed",
+    tripId: trip._id,
+    endTime: trip.endTime,
+    driver: trip.driver,
+});
 
         if (trip.driver) {
             emitToUser(trip.driver?.toString(), "trip_completed", {
+                type: "trip_completed",
+                status: "completed",
                 tripId: trip._id,
                 endTime: trip.endTime,
                 rider: trip.rider,
