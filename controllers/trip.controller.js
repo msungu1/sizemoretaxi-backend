@@ -545,14 +545,7 @@ export const completeTrip = async (req, res) => {
         await trip.populate("driver", "name phone carModel carNumber");
 
         // Notify rider and driver
-//        emitToUser(trip.rider?.toString(), "trip_completed", {
-//     type: "trip_completed",
-//     status: "completed",
-//     tripId: trip._id,
-//     endTime: trip.endTime,
-//     driver: trip.driver,
-// }
-emitToUser(String(trip.rider._id || trip.rider), "trip_completed", {
+       emitToUser(trip.rider?.toString(), "trip_completed", {
     type: "trip_completed",
     status: "completed",
     tripId: trip._id,
@@ -560,23 +553,14 @@ emitToUser(String(trip.rider._id || trip.rider), "trip_completed", {
     driver: trip.driver,
 });
 
-
-
         if (trip.driver) {
-            // emitToUser(trip.driver?.toString(), "trip_completed", {
-            //     type: "trip_completed",
-            //     status: "completed",
-            //     tripId: trip._id,
-            //     endTime: trip.endTime,
-            //     rider: trip.rider,
-            // });
-            emitToUser(String(trip.driver._id || trip.driver), "trip_completed", {
-    type: "trip_completed",
-    status: "completed",
-    tripId: trip._id,
-    endTime: trip.endTime,
-    rider: trip.rider,
-});
+            emitToUser(trip.driver?.toString(), "trip_completed", {
+                type: "trip_completed",
+                 status: "completed",
+                tripId: trip._id,
+                endTime: trip.endTime,
+                rider: trip.rider,
+            });
         }
 
         return response(res, 200, "Trip completed.");
