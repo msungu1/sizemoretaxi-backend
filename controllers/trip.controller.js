@@ -529,12 +529,60 @@ export const startTrip = async (req, res) => {
 };
 
 // Driver or rider ends the trip
+// export const completeTrip = async (req, res) => {
+//     const { tripId, rating } = req.body;
+
+//     try {
+//         const trip = await Trip.findById(tripId);
+//         if (!trip) return response(res, 404, "Trip not found.");
+
+//         trip.status = "completed";
+//         trip.endTime = new Date();
+//         if (rating) trip.ratingByRider = rating;
+//         await trip.save();
+
+//         await trip.populate("rider", "name phone");
+//         await trip.populate("driver", "name phone carModel carNumber");
+
+//         // Notify rider and driver
+//        emitToUser(trip.rider?.toString(), "trip_completed", {
+//     type: "trip_completed",
+//     status: "completed",
+//     tripId: trip._id,
+//     endTime: trip.endTime,
+//     driver: trip.driver,
+// });
+
+//         if (trip.driver) {
+//             emitToUser(trip.driver?.toString(), "trip_completed", {
+//                 type: "trip_completed",
+//                  status: "completed",
+//                 tripId: trip._id,
+//                 endTime: trip.endTime,
+//                 rider: trip.rider,
+//             });
+//         }
+
+//         return response(res, 200, "Trip completed.");
+//     } catch (err) {
+//         console.error(err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
+
 export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
 
     try {
         const trip = await Trip.findById(tripId);
         if (!trip) return response(res, 404, "Trip not found.");
+
+        // ✅ Capture raw ObjectId strings BEFORE populating —
+        // after populate(), trip.rider/trip.driver become full Documents,
+        // and calling .toString() on those returns "[object Object]"
+        // instead of the actual user id, which silently breaks emitToUser().
+        const riderId = trip.rider?.toString();
+        const driverId = trip.driver?.toString();
 
         trip.status = "completed";
         trip.endTime = new Date();
@@ -545,18 +593,18 @@ export const completeTrip = async (req, res) => {
         await trip.populate("driver", "name phone carModel carNumber");
 
         // Notify rider and driver
-       emitToUser(trip.rider?.toString(), "trip_completed", {
-    type: "trip_completed",
-    status: "completed",
-    tripId: trip._id,
-    endTime: trip.endTime,
-    driver: trip.driver,
-});
+        emitToUser(riderId, "trip_completed", {
+            type: "trip_completed",
+            status: "completed",
+            tripId: trip._id,
+            endTime: trip.endTime,
+            driver: trip.driver,
+        });
 
-        if (trip.driver) {
-            emitToUser(trip.driver?.toString(), "trip_completed", {
+        if (driverId) {
+            emitToUser(driverId, "trip_completed", {
                 type: "trip_completed",
-                 status: "completed",
+                status: "completed",
                 tripId: trip._id,
                 endTime: trip.endTime,
                 rider: trip.rider,
