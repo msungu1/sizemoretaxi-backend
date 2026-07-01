@@ -529,46 +529,7 @@ export const startTrip = async (req, res) => {
 };
 
 // Driver or rider ends the trip
-// export const completeTrip = async (req, res) => {
-//     const { tripId, rating } = req.body;
 
-//     try {
-//         const trip = await Trip.findById(tripId);
-//         if (!trip) return response(res, 404, "Trip not found.");
-
-//         trip.status = "completed";
-//         trip.endTime = new Date();
-//         if (rating) trip.ratingByRider = rating;
-//         await trip.save();
-
-//         await trip.populate("rider", "name phone");
-//         await trip.populate("driver", "name phone carModel carNumber");
-
-//         // Notify rider and driver
-//        emitToUser(trip.rider?.toString(), "trip_completed", {
-//     type: "trip_completed",
-//     status: "completed",
-//     tripId: trip._id,
-//     endTime: trip.endTime,
-//     driver: trip.driver,
-// });
-
-//         if (trip.driver) {
-//             emitToUser(trip.driver?.toString(), "trip_completed", {
-//                 type: "trip_completed",
-//                  status: "completed",
-//                 tripId: trip._id,
-//                 endTime: trip.endTime,
-//                 rider: trip.rider,
-//             });
-//         }
-
-//         return response(res, 200, "Trip completed.");
-//     } catch (err) {
-//         console.error(err);
-//         return response(res, 500, "Internal server error.");
-//     }
-// };
 
 export const completeTrip = async (req, res) => {
     const { tripId, rating } = req.body;
@@ -598,7 +559,11 @@ export const completeTrip = async (req, res) => {
             status: "completed",
             tripId: trip._id,
             endTime: trip.endTime,
+            startTime: trip.startTime,     
             driver: trip.driver,
+            fare: trip.fare, 
+            pickupLocation: trip.pickupLocation,
+            dropoffLocation: trip.dropoffLocation,
         });
 
         if (driverId) {
