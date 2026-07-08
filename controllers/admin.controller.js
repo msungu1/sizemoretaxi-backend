@@ -1,5 +1,6 @@
 import { Trip } from "../models/trip.model.js";
 import { User } from "../models/user.model.js";
+import { driverLocations } from "../lib/socket.js";   // add this import
 
 // Get all users from the database
 export const getAllUsers = async (req, res) => {
@@ -92,7 +93,41 @@ export const disableUser = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+export const getDashboardStats = async (req, res) => {
+  try {
+    const pendingBookings = await Trip.countDocuments({ status: "requested" });
 
+    const activeRides = await Trip.countDocuments({
+      status: { $in: ["assigned", "accepted", "in_progress"] }
+    });
+
+    // Real-time count from connected sockets, not a DB flag
+    const onlineDrivers = driverLocations.size;
+
+    const revenueResult = await Trip.aggregate([
+      { $match: { status: "completed" } },
+      { $group: { _id: null, total: { $sum: "$fare" } } }
+    ]);
+    const totalRevenue = revenueResult[0]?.total || 0;
+
+    const totalTrips = await Trip.countDocuments();
+    const completedTrips = await Trip.countDocuments({ status: "completed" });
+    const cancelledTrips = await Trip.countDocuments({ status: "cancelled" });
+
+    res.status(200).json({
+      pendingBookings,
+      activeRides,
+      onlineDrivers,
+      totalRevenue,
+      totalTrips,
+      completedTrips,
+      cancelledTrips
+    });
+  } catch (err) {
+    console.error("❌ getDashboardStats error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 // Enable a previously blocked user
 export const enableUser = async (req, res) => {
     try {

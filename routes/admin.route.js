@@ -8,6 +8,7 @@ import {
     deleteUserPermanently,
     getAllTrips,
     getTripDetailsById
+    getDashboardStats,
 } from "../controllers/admin.controller.js";
 import { requireAdmin } from "../middleware/requireAdmin.js"
 import { verifyToken } from "../middleware/verify.js"
@@ -25,4 +26,5 @@ router.delete("/users/:id", deleteUserPermanently);
 router.get("/trips", getAllTrips);
 router.get("/trips/:id", getTripDetailsById);
 
+router.get("/dashboard/stats", getDashboardStats);
 export default router;
