@@ -375,18 +375,19 @@ export const declineTrip = async (req, res) => {
 export const getAllTrips = async (req, res) => {
     try {
         const { status, page = 1, limit = 20 } = req.query;
-
         const validStatuses = ["pending", "requested", "assigned", "accepted", "in_progress", "completed", "cancelled"];
 
-        if (status && !validStatuses.includes(status)) {
-            return response(res, 400, "Invalid status value.");
+        const filter = {};
+        if (status) {
+            const statusArray = status.split(',').map(s => s.trim());
+            const invalid = statusArray.filter(s => !validStatuses.includes(s));
+            if (invalid.length) {
+                return response(res, 400, `Invalid status value(s): ${invalid.join(", ")}`);
+            }
+            filter.status = statusArray.length > 1 ? { $in: statusArray } : statusArray[0];
         }
 
-        const filter = {};
-        if (status) filter.status = status;
-
         const skip = (page - 1) * limit;
-
         const trips = await Trip.find(filter)
             .sort({ scheduledTime: -1 })
             .skip(skip)
@@ -402,12 +403,47 @@ export const getAllTrips = async (req, res) => {
         }));
 
         return response(res, 200, "Trips fetched.", formattedTrips);
-
     } catch (err) {
         console.error("❌ getAllTrips error:", err);
         return response(res, 500, "Internal server error.");
     }
 };
+// export const getAllTrips = async (req, res) => {
+//     try {
+//         const { status, page = 1, limit = 20 } = req.query;
+
+//         const validStatuses = ["pending", "requested", "assigned", "accepted", "in_progress", "completed", "cancelled"];
+
+//         if (status && !validStatuses.includes(status)) {
+//             return response(res, 400, "Invalid status value.");
+//         }
+
+//         const filter = {};
+//         if (status) filter.status = status;
+
+//         const skip = (page - 1) * limit;
+
+//         const trips = await Trip.find(filter)
+//             .sort({ scheduledTime: -1 })
+//             .skip(skip)
+//             .limit(Number(limit))
+//             .select("rider driver pickupLocation dropoffLocation status fare vehicleType scheduledTime")
+//             .populate("rider", "name phone")
+//             .populate("driver", "name phone carModel carNumber");
+
+//         const formattedTrips = trips.map(trip => ({
+//             ...trip.toObject(),
+//             pickupLabel: trip.pickupLocation?.address,
+//             dropoffLabel: trip.dropoffLocation?.address,
+//         }));
+
+//         return response(res, 200, "Trips fetched.", formattedTrips);
+
+//     } catch (err) {
+//         console.error("❌ getAllTrips error:", err);
+//         return response(res, 500, "Internal server error.");
+//     }
+// };
 export const getAvailableDrivers = async (req, res) => {
     try {
         const { tripId } = req.query;
