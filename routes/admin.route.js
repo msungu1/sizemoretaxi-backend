@@ -7,7 +7,7 @@ import {
     enableUser,
     deleteUserPermanently,
     getAllTrips,
-    getTripDetailsById
+    getTripDetailsById,
     getDashboardStats,
 } from "../controllers/admin.controller.js";
 import { requireAdmin } from "../middleware/requireAdmin.js"
