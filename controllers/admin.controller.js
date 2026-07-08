@@ -227,4 +227,30 @@ export const deleteUserPermanently = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+// export const getOnlineDriverIds = async (req, res) => {
+//   try {
+//     const onlineDriverIds = Array.from(driverLocations.keys());
+//     res.status(200).json({ success: true, onlineDriverIds });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
+export const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().select("-password");
 
+        const usersWithStatus = users.map((user) => {
+            const userObj = user.toObject();
+            if (userObj.role === "driver") {
+                const idStr = user._id.toString();
+                userObj.isOnline = driverLocations.has(idStr);
+                userObj.currentLocation = driverLocations.get(idStr) || null;
+            }
+            return userObj;
+        });
+
+        res.status(200).json({ success: true, users: usersWithStatus });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
