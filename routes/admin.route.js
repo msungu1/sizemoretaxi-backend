@@ -10,6 +10,7 @@ import {
     getTripDetailsById,
     getDashboardStats,
     getOnlineDriverIds,
+    getOnlineDriverLocations,
 } from "../controllers/admin.controller.js";
 import { requireAdmin } from "../middleware/requireAdmin.js"
 import { verifyToken } from "../middleware/verify.js"
@@ -28,5 +29,6 @@ router.get("/trips", getAllTrips);
 router.get("/trips/:id", getTripDetailsById);
 
 router.get("/dashboard/stats", getDashboardStats);
-router.get("/drivers/online", getOnlineDriverIds);  
+router.get("/drivers/online", getOnlineDriverIds); 
+router.get("/drivers/online-locations", getOnlineDriverLocations); 
 export default router;

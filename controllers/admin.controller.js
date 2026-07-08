@@ -254,3 +254,36 @@ export const getAllUsers = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+export const getOnlineDriverLocations = async (req, res) => {
+    try {
+        const driverIds = Array.from(driverLocations.keys());
+        if (driverIds.length === 0) {
+            return response(res, 200, "No drivers online.", []);
+        }
+
+        const drivers = await User.find({ _id: { $in: driverIds } })
+            .select("name phone carModel carNumber");
+
+        const result = drivers.map(d => {
+            const loc = driverLocations.get(d._id.toString());
+            return {
+                driverId: d._id.toString(),
+                name: d.name,
+                phone: d.phone,
+                carModel: d.carModel,
+                carNumber: d.carNumber,
+                lat: loc?.lat,
+                lng: loc?.lng,
+                heading: loc?.heading || 0,
+                speed: loc?.speed || 0,
+                updatedAt: loc?.updatedAt,
+            };
+        });
+
+        return response(res, 200, "Online driver locations fetched.", result);
+    } catch (err) {
+        console.error("❌ getOnlineDriverLocations error:", err);
+        return response(res, 500, "Internal server error.");
+    }
+};
