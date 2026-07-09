@@ -19,7 +19,18 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 // Register
-router.post("/register", upload.single("profilePicture"), registerUser);
+// router.post("/register", upload.single("profilePicture"), registerUser);
+router.post(
+  "/register",
+  upload.fields([
+    { name: "driverPhoto", maxCount: 1 },
+    { name: "licensePhoto", maxCount: 1 },
+    { name: "nationalIdPhoto", maxCount: 1 },
+    { name: "vehiclePhoto", maxCount: 1 },
+  ]),
+  registerUser
+);
+
 
 // Verify OTP after registration
 router.post("/verify-otp", verifyOtp);

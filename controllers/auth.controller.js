@@ -22,7 +22,6 @@ const generateTokens = (user) => {
 const response = (res, status, message, data = null) => {
   return res.status(status).json({ status, message, data });
 };
-
 export const registerUser = async (req, res) => {
   const {
     name,
@@ -37,11 +36,17 @@ export const registerUser = async (req, res) => {
     idNumber
   } = req.body;
 
-  const allowedCarTypes = ["comfort", "business", "premium",];
+  const allowedCarTypes = ["Chopper", "Comfort", "Business", "Premium"];
 
   if (!name || !email || !phone || !password)
     return response(res, 400, "All fields are required.");
 
+  // req.files comes from multer's upload.fields([...]) — each key is an array of files
+  const files = req.files || {};
+  const driverPhotoFile = files.driverPhoto?.[0];
+  const licensePhotoFile = files.licensePhoto?.[0];
+  const nationalIdPhotoFile = files.nationalIdPhoto?.[0];
+  const vehiclePhotoFile = files.vehiclePhoto?.[0];
 
   // ✅ If registering as a driver, validate driver-specific fields
   if (role === "driver") {
@@ -53,8 +58,8 @@ export const registerUser = async (req, res) => {
       return response(res, 400, `carType must be one of: ${allowedCarTypes.join(", ")}`);
     }
 
-    if (req.file && !req.file.mimetype.startsWith("image/")) {
-      return response(res, 400, "Uploaded file must be an image.");
+    if (!driverPhotoFile || !licensePhotoFile || !nationalIdPhotoFile) {
+      return response(res, 400, "Driver photo, license photo, and national ID photo are required.");
     }
   }
 
@@ -77,10 +82,6 @@ export const registerUser = async (req, res) => {
       registrationOTPExpires,
     };
 
-    if (req.file && !req.file.mimetype.startsWith("image/")) {
-      return response(res, 400, "Uploaded file must be an image.");
-    }
-
     // ✅ Add driver-specific fields if applicable
     if (role === "driver") {
       userData.carModel = carModel;
@@ -88,6 +89,12 @@ export const registerUser = async (req, res) => {
       userData.carType = carType;
       userData.licenseNumber = licenseNumber;
       userData.idNumber = idNumber;
+
+      // CloudinaryStorage attaches the hosted URL at file.path
+      userData.profilePicture = driverPhotoFile.path;
+      userData.licensePhotoUrl = licensePhotoFile.path;
+      userData.nationalIdPhotoUrl = nationalIdPhotoFile.path;
+      if (vehiclePhotoFile) userData.vehiclePhotoUrl = vehiclePhotoFile.path;
     }
 
     const user = await User.create(userData);
@@ -102,6 +109,90 @@ export const registerUser = async (req, res) => {
     return response(res, 500, "Internal server error.");
   }
 };
+// 
+//   const {
+//     name,
+//     email,
+//     phone,
+//     password,
+//     role,
+//     carModel,
+//     carNumber,
+//     carType,
+//     licenseNumber,
+//     idNumber
+//   } = req.body;
+
+//   const allowedCarTypes = ["comfort", "business", "premium",];
+
+//   if (!name || !email || !phone || !password)
+//     return response(res, 400, "All fields are required.");
+
+//  // req.files comes from multer's upload.fields([...]) — each key is an array of files
+//   const files = req.files || {};
+//   const driverPhotoFile = files.driverPhoto?.[0];
+//   const licensePhotoFile = files.licensePhoto?.[0];
+//   const nationalIdPhotoFile = files.nationalIdPhoto?.[0];
+//   const vehiclePhotoFile = files.vehiclePhoto?.[0];
+//   // ✅ If registering as a driver, validate driver-specific fields
+//   if (role === "driver") {
+//     if (!carModel || !carNumber || !carType || !licenseNumber || !idNumber) {
+//       return response(res, 400, "All driver vehicle and ID details are required.");
+//     }
+
+//     if (!allowedCarTypes.includes(carType)) {
+//       return response(res, 400, `carType must be one of: ${allowedCarTypes.join(", ")}`);
+//     }
+
+//     if (req.file && !req.file.mimetype.startsWith("image/")) {
+//       return response(res, 400, "Uploaded file must be an image.");
+//     }
+//   }
+
+//   try {
+//     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+//     if (existingUser)
+//       return response(res, 409, "Email or phone already exists.");
+
+//     const hashedPassword = await bcrypt.hash(password, 12);
+//     const registrationOTP = Math.floor(100000 + Math.random() * 900000).toString();
+//     const registrationOTPExpires = Date.now() + 10 * 60 * 1000;
+
+//     const userData = {
+//       name,
+//       email,
+//       phone,
+//       password: hashedPassword,
+//       role,
+//       registrationOTP,
+//       registrationOTPExpires,
+//     };
+
+//     if (req.file && !req.file.mimetype.startsWith("image/")) {
+//       return response(res, 400, "Uploaded file must be an image.");
+//     }
+
+//     // ✅ Add driver-specific fields if applicable
+//     if (role === "driver") {
+//       userData.carModel = carModel;
+//       userData.carNumber = carNumber;
+//       userData.carType = carType;
+//       userData.licenseNumber = licenseNumber;
+//       userData.idNumber = idNumber;
+//     }
+
+//     const user = await User.create(userData);
+
+//     await sendEmail(userData.email, registrationOTP);
+//     // TODO: fix twilio account
+//     // sendSMS(userData.phone, registrationOTP);
+
+//     return response(res, 201, "User registered. OTP sent.");
+//   } catch (err) {
+//     console.error(err);
+//     return response(res, 500, "Internal server error.");
+//   }
+// };
 
 // Verify otp for ur account
 export const verifyOtp = async (req, res) => {
