@@ -525,12 +525,35 @@ export const getAllTrips = async (req, res) => {
             .populate("rider", "name phone")
             .populate("driver", "name phone carModel carNumber");
 
-        const formattedTrips = trips.map(trip => ({
-            ...trip.toObject(),
-            pickupLabel: trip.pickupLocation?.address,
-            dropoffLabel: trip.dropoffLocation?.address,
-        }));
+        // const formattedTrips = trips.map(trip => ({
+        //     ...trip.toObject(),
+        //     pickupLabel: trip.pickupLocation?.address,
+        //     dropoffLabel: trip.dropoffLocation?.address,
+        // }));
 
+        const formattedTrips = trips.map(trip => ({
+    _id: trip._id,
+
+    rider: trip.rider,
+    driver: trip.driver,
+
+    riderName: trip.rider?.name || "Unknown Rider",
+    riderPhone: trip.rider?.phone || "",
+
+    driverName: trip.driver?.name || "",
+    driverPhone: trip.driver?.phone || "",
+
+    pickupLocation: trip.pickupLocation,
+    dropoffLocation: trip.dropoffLocation,
+
+    pickupLabel: trip.pickupLocation?.address,
+    dropoffLabel: trip.dropoffLocation?.address,
+
+    vehicleType: trip.vehicleType,
+    fare: trip.fare,
+    status: trip.status,
+    scheduledTime: trip.scheduledTime,
+}));
         return response(res, 200, "Trips fetched.", formattedTrips);
     } catch (err) {
         console.error("❌ getAllTrips error:", err);
@@ -582,6 +605,14 @@ export const getAvailableDrivers = async (req, res) => {
 
         const trip = await Trip.findById(tripId);
         if (!trip) return response(res, 404, "Trip not found.");
+        if (trip.vehicleType?.toLowerCase() === "chopper") {
+    return response(
+        res,
+        200,
+        "No drivers required for Chopper trips.",
+        []
+    );
+}
 
         const { vehicleType, scheduledTime, durationMinutes } = trip;
 
@@ -1031,11 +1062,7 @@ export const acceptTripByAdmin = async (req, res) => {
                 ? "Your Chopper booking has been confirmed. Our team will be in touch with further details."
                 : "Ride accepted. Finding a driver..."
         };
-        const payload = {
-            tripId: trip._id.toString(),
-            status: "accepted",
-            message: "Ride accepted. Finding a driver..."
-        };
+        
 
         // 🚀 notify rider (WAITING STATE)
         emitToUser(
