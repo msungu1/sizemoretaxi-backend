@@ -133,119 +133,10 @@ export const getTripOptions = async (req, res) => {
         return response(res, 500, "Internal server error.");
     }
 };
+
 const response = (res, status, message, data = null) =>
     res.status(status).json({ status, message, data });
 
-// export const confirmTrip = async (req, res) => {
-//     try {
-//         const { pickup, dropoff, vehicleType, scheduledTime, riderId } = req.body;
-
-//         if (!pickup || !dropoff || !vehicleType || !riderId) {
-//             return res.status(400).json({ message: "Missing required trip details." });
-//         }
-
-//         const normalizedPickup = normalizeLocation(pickup);
-//         const normalizedDropoff = normalizeLocation(dropoff);
-
-//         if (!normalizedPickup.address || !normalizedDropoff.address) {
-//             return res.status(400).json({ message: "Valid pickup and dropoff required." });
-//         }
-
-//         // 30 min rule
-//         const sched = scheduledTime ? new Date(scheduledTime) : new Date();
-//         const now = new Date();
-
-//         const diffMins = Math.floor((sched - now) / (1000 * 60));
-//         if (diffMins < 30) {
-//             return res.status(400).json({
-//                 message: "Rides must be booked at least 30 minutes in advance."
-//             });
-//         }
-
-//         const userRecord = await User.findById(riderId);
-//         if (!userRecord) {
-//             return res.status(404).json({ message: "Rider not found" });
-//         }
-
-//         // ✅ FIX #1: ONLY CHECK ACTIVE TRIPS (this is the real lock)
-//         const activeTrip = await Trip.findOne({
-//             rider: riderId,
-//             status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
-//         });
-
-//         if (activeTrip) {
-//             return res.status(400).json({
-//                 message: "You already have an active trip.",
-//                 tripId: activeTrip._id
-//             });
-//         }
-
-//         // route
-//         let route;
-//         try {
-//             route = await getDistanceAndDuration(normalizedPickup, normalizedDropoff);
-//         } catch (err) {
-//             return res.status(500).json({ message: "Route calculation failed" });
-//         }
-
-//         const fares = calculateFares(route.distanceMeters, route.durationSec);
-
-//         const selectedFare = fares.find(
-//             f => f.type?.toLowerCase() === vehicleType?.toLowerCase()
-//         );
-
-//         if (!selectedFare) {
-//             return res.status(400).json({ message: "Invalid vehicle type." });
-//         }
-
-//         // ❌ REMOVE isRiding LOCK (THIS WAS YOUR BUG SOURCE)
-//         const newTrip = await Trip.create({
-//             rider: riderId,
-//             pickupLocation: normalizedPickup,
-//             dropoffLocation: normalizedDropoff,
-//             vehicleType,
-//             scheduledTime: sched,
-//             fare: selectedFare.total,
-//             status: "requested"
-//         });
-
-//         // (optional UI flag only — NOT a blocker anymore)
-//         await User.findByIdAndUpdate(riderId, {
-//             isRiding: true
-//         });
-
-//         emitToAdmin("ride_requested", {
-//             tripId: newTrip._id.toString(),
-//             rider: {
-//                 name: userRecord?.name || "Rider",
-//                 phone: userRecord?.phone || ""
-//             },
-//             pickupLocation: normalizedPickup,
-//             dropoffLocation: normalizedDropoff,
-//             pickupLabel: normalizedPickup.address,
-//             dropoffLabel: normalizedDropoff.address,
-//             fare: `KES ${newTrip.fare}`,
-//             vehicleType,
-//             distance: route.distanceText,
-//             duration: route.durationText,
-//             scheduledTime: sched,
-//         });
-// emitToUser(riderId, "trip_created", {
-//   tripId: newTrip._id,
-// });
-//         return res.status(201).json({
-//             message: "Trip requested successfully",
-//             trip: newTrip
-//         });
-
-//     } catch (error) {
-//         console.error("❌ confirmTrip error:", error);
-//         return res.status(500).json({
-//             message: "Internal Server Error",
-//             error: error.message
-//         });
-//     }
-// };
 export const confirmTrip = async (req, res) => {
     try {
         const { pickup, dropoff, vehicleType, scheduledTime, riderId } = req.body;
@@ -261,11 +152,10 @@ export const confirmTrip = async (req, res) => {
             return res.status(400).json({ message: "Valid pickup and dropoff required." });
         }
 
-        // 👇 detect the special-case vehicle type
-        const isChopper = vehicleType?.toLowerCase() === "chopper";
-
+        // 30 min rule
         const sched = scheduledTime ? new Date(scheduledTime) : new Date();
         const now = new Date();
+
         const diffMins = Math.floor((sched - now) / (1000 * 60));
         if (diffMins < 30) {
             return res.status(400).json({
@@ -278,11 +168,10 @@ export const confirmTrip = async (req, res) => {
             return res.status(404).json({ message: "Rider not found" });
         }
 
-        // 👇 include "pending" here so a rider with an open Chopper request
-        // can't spam more requests while it's awaiting admin contact
+        // ✅ FIX #1: ONLY CHECK ACTIVE TRIPS (this is the real lock)
         const activeTrip = await Trip.findOne({
             rider: riderId,
-            status: { $in: ["requested", "assigned", "accepted", "in_progress", "pending"] }
+            status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
         });
 
         if (activeTrip) {
@@ -292,6 +181,7 @@ export const confirmTrip = async (req, res) => {
             });
         }
 
+        // route
         let route;
         try {
             route = await getDistanceAndDuration(normalizedPickup, normalizedDropoff);
@@ -300,6 +190,7 @@ export const confirmTrip = async (req, res) => {
         }
 
         const fares = calculateFares(route.distanceMeters, route.durationSec);
+
         const selectedFare = fares.find(
             f => f.type?.toLowerCase() === vehicleType?.toLowerCase()
         );
@@ -308,6 +199,7 @@ export const confirmTrip = async (req, res) => {
             return res.status(400).json({ message: "Invalid vehicle type." });
         }
 
+        // ❌ REMOVE isRiding LOCK (THIS WAS YOUR BUG SOURCE)
         const newTrip = await Trip.create({
             rider: riderId,
             pickupLocation: normalizedPickup,
@@ -315,68 +207,46 @@ export const confirmTrip = async (req, res) => {
             vehicleType,
             scheduledTime: sched,
             fare: selectedFare.total,
-            status: isChopper ? "pending" : "requested"   // 👈 branch here
+            status: "requested"
         });
 
-        await User.findByIdAndUpdate(riderId, { isRiding: true });
+        // (optional UI flag only — NOT a blocker anymore)
+        await User.findByIdAndUpdate(riderId, {
+            isRiding: true
+        });
 
-        if (isChopper) {
-            // 👇 tell admin this needs a manual follow-up call, not a driver match
-            emitToAdmin("chopper_request_pending", {
-                tripId: newTrip._id.toString(),
-                rider: {
-                    name: userRecord?.name || "Rider",
-                    phone: userRecord?.phone || ""
-                },
-                pickupLocation: normalizedPickup,
-                dropoffLocation: normalizedDropoff,
-                pickupLabel: normalizedPickup.address,
-                dropoffLabel: normalizedDropoff.address,
-                fare: `KES ${newTrip.fare}`,
-                vehicleType,
-                distance: route.distanceText,
-                duration: route.durationText,
-                scheduledTime: sched,
-            });
-
-            // 👇 tell the rider app to render the PENDING screen
-            emitToUser(riderId, "trip_pending", {
-                tripId: newTrip._id,
-                status: "pending",
-                message: "Your Chopper request has been received. Our team will contact you shortly to confirm details."
-            });
-        } else {
-            emitToAdmin("ride_requested", {
-                tripId: newTrip._id.toString(),
-                rider: {
-                    name: userRecord?.name || "Rider",
-                    phone: userRecord?.phone || ""
-                },
-                pickupLocation: normalizedPickup,
-                dropoffLocation: normalizedDropoff,
-                pickupLabel: normalizedPickup.address,
-                dropoffLabel: normalizedDropoff.address,
-                fare: `KES ${newTrip.fare}`,
-                vehicleType,
-                distance: route.distanceText,
-                duration: route.durationText,
-                scheduledTime: sched,
-            });
-
-            emitToUser(riderId, "trip_created", { tripId: newTrip._id });
-        }
-
+        emitToAdmin("ride_requested", {
+            tripId: newTrip._id.toString(),
+            rider: {
+                name: userRecord?.name || "Rider",
+                phone: userRecord?.phone || ""
+            },
+            pickupLocation: normalizedPickup,
+            dropoffLocation: normalizedDropoff,
+            pickupLabel: normalizedPickup.address,
+            dropoffLabel: normalizedDropoff.address,
+            fare: `KES ${newTrip.fare}`,
+            vehicleType,
+            distance: route.distanceText,
+            duration: route.durationText,
+            scheduledTime: sched,
+        });
+emitToUser(riderId, "trip_created", {
+  tripId: newTrip._id,
+});
         return res.status(201).json({
-            message: isChopper ? "Chopper request received, pending review" : "Trip requested successfully",
+            message: "Trip requested successfully",
             trip: newTrip
         });
 
     } catch (error) {
         console.error("❌ confirmTrip error:", error);
-        return res.status(500).json({ message: "Internal Server Error", error: error.message });
+        return res.status(500).json({
+            message: "Internal Server Error",
+            error: error.message
+        });
     }
 };
-
 export const cancelTrip = async (req, res) => {
     const { tripId, reason, cancelledBy } = req.body;
 
@@ -393,7 +263,7 @@ export const cancelTrip = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: { $in: ["requested", "pending", "assigned", "accepted", "in_progress"] }
+                status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
             },
             {
                 $set: {
@@ -460,8 +330,8 @@ export const declineTrip = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: { $in: ["requested", "pending"] }   
-             },
+                status: "requested"
+            },
             {
                 status: "cancelled",
                 cancellationReason: reason || "Declined by admin"
@@ -525,35 +395,12 @@ export const getAllTrips = async (req, res) => {
             .populate("rider", "name phone")
             .populate("driver", "name phone carModel carNumber");
 
-        // const formattedTrips = trips.map(trip => ({
-        //     ...trip.toObject(),
-        //     pickupLabel: trip.pickupLocation?.address,
-        //     dropoffLabel: trip.dropoffLocation?.address,
-        // }));
-
         const formattedTrips = trips.map(trip => ({
-    _id: trip._id,
+            ...trip.toObject(),
+            pickupLabel: trip.pickupLocation?.address,
+            dropoffLabel: trip.dropoffLocation?.address,
+        }));
 
-    rider: trip.rider,
-    driver: trip.driver,
-
-    riderName: trip.rider?.name || "Unknown Rider",
-    riderPhone: trip.rider?.phone || "",
-
-    driverName: trip.driver?.name || "",
-    driverPhone: trip.driver?.phone || "",
-
-    pickupLocation: trip.pickupLocation,
-    dropoffLocation: trip.dropoffLocation,
-
-    pickupLabel: trip.pickupLocation?.address,
-    dropoffLabel: trip.dropoffLocation?.address,
-
-    vehicleType: trip.vehicleType,
-    fare: trip.fare,
-    status: trip.status,
-    scheduledTime: trip.scheduledTime,
-}));
         return response(res, 200, "Trips fetched.", formattedTrips);
     } catch (err) {
         console.error("❌ getAllTrips error:", err);
@@ -605,14 +452,6 @@ export const getAvailableDrivers = async (req, res) => {
 
         const trip = await Trip.findById(tripId);
         if (!trip) return response(res, 404, "Trip not found.");
-        if (trip.vehicleType?.toLowerCase() === "chopper") {
-    return response(
-        res,
-        200,
-        "No drivers required for Chopper trips.",
-        []
-    );
-}
 
         const { vehicleType, scheduledTime, durationMinutes } = trip;
 
@@ -1042,7 +881,7 @@ export const acceptTripByAdmin = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status:{$in: ["requested", "pending"]} // allow both requested and pending for admin acceptance
+                status: "requested"
             },
             {
                 status: "accepted"
@@ -1054,15 +893,11 @@ export const acceptTripByAdmin = async (req, res) => {
             return response(res, 400, "Trip not found.");
         }
 
-                const isChopper = trip.vehicleType?.toLowerCase() === "chopper";
-                const payload = {
+        const payload = {
             tripId: trip._id.toString(),
             status: "accepted",
-            message: isChopper
-                ? "Your Chopper booking has been confirmed. Our team will be in touch with further details."
-                : "Ride accepted. Finding a driver..."
+            message: "Ride accepted. Finding a driver..."
         };
-        
 
         // 🚀 notify rider (WAITING STATE)
         emitToUser(
