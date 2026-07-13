@@ -171,7 +171,7 @@ export const confirmTrip = async (req, res) => {
         // ✅ FIX #1: ONLY CHECK ACTIVE TRIPS (this is the real lock)
         const activeTrip = await Trip.findOne({
             rider: riderId,
-            status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
+            status: { $in: ["pending", "requested", "assigned", "accepted", "in_progress"] }
         });
 
         if (activeTrip) {
@@ -200,6 +200,8 @@ export const confirmTrip = async (req, res) => {
         }
 
         // ❌ REMOVE isRiding LOCK (THIS WAS YOUR BUG SOURCE)
+        // Chopper needs a human to call the passenger before dispatch — everything else goes straight to the driver pool
+const initialStatus = vehicleType?.toLowerCase() === "chopper" ? "pending" : "requested";
         const newTrip = await Trip.create({
             rider: riderId,
             pickupLocation: normalizedPickup,
@@ -207,7 +209,8 @@ export const confirmTrip = async (req, res) => {
             vehicleType,
             scheduledTime: sched,
             fare: selectedFare.total,
-            status: "requested"
+            // status: "requested"
+            status: initialStatus   // ← was hardcoded "requested"
         });
 
         // (optional UI flag only — NOT a blocker anymore)
@@ -263,7 +266,7 @@ export const cancelTrip = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
+                status: { $in: ["pending", "requested", "assigned", "accepted", "in_progress"] }
             },
             {
                 $set: {
@@ -769,7 +772,7 @@ export const assignTrip = async (req, res) => {
         // 1. Get trip
         const trip = await Trip.findOne({
             _id: tripId,
-            status: { $in: ["requested", "accepted"] }
+            status: { $in: ["pending", "requested", "accepted"] }
         });
 
         if (!trip) {
@@ -881,7 +884,8 @@ export const acceptTripByAdmin = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: "requested"
+                // status: "requested"
+                status: { $in: ["pending", "requested"] }
             },
             {
                 status: "accepted"
