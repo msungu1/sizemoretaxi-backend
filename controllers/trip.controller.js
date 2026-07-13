@@ -393,7 +393,7 @@ export const cancelTrip = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: { $in: ["requested", "assigned", "accepted", "in_progress"] }
+                status: { $in: ["requested", "pending", "assigned", "accepted", "in_progress"] }
             },
             {
                 $set: {
@@ -460,8 +460,8 @@ export const declineTrip = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: "requested"
-            },
+                status: { $in: ["requested", "pending"] }   
+             },
             {
                 status: "cancelled",
                 cancellationReason: reason || "Declined by admin"
@@ -1011,7 +1011,7 @@ export const acceptTripByAdmin = async (req, res) => {
         const trip = await Trip.findOneAndUpdate(
             {
                 _id: tripId,
-                status: "requested"
+                status:{$in: ["requested", "pending"]} // allow both requested and pending for admin acceptance
             },
             {
                 status: "accepted"
@@ -1023,6 +1023,14 @@ export const acceptTripByAdmin = async (req, res) => {
             return response(res, 400, "Trip not found.");
         }
 
+                const isChopper = trip.vehicleType?.toLowerCase() === "chopper";
+                const payload = {
+            tripId: trip._id.toString(),
+            status: "accepted",
+            message: isChopper
+                ? "Your Chopper booking has been confirmed. Our team will be in touch with further details."
+                : "Ride accepted. Finding a driver..."
+        };
         const payload = {
             tripId: trip._id.toString(),
             status: "accepted",
