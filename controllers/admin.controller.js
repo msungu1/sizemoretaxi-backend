@@ -11,7 +11,6 @@ export const getAllUsers = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Get a specific user by their ID
 export const getUserById = async (req, res) => {
     try {
@@ -27,7 +26,6 @@ export const getUserById = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Update user fields (for both driver & riders)
 export const updateUserFields = async (req, res) => {
     try {
@@ -73,7 +71,6 @@ export const updateUserFields = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Disable an existing user
 export const disableUser = async (req, res) => {
     try {
@@ -147,7 +144,6 @@ export const enableUser = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Get all the trips
 export const getAllTrips = async (req, res) => {
     try {
@@ -170,7 +166,6 @@ export const getAllTrips = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Get a specific trip by its ID
 export const getTripDetailsById = async (req, res) => {
     try {
@@ -206,7 +201,6 @@ export const getTripDetailsById = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 // Delete a user for good
 export const deleteUserPermanently = async (req, res) => {
     try {
@@ -235,26 +229,25 @@ export const deleteUserPermanently = async (req, res) => {
 //     res.status(500).json({ success: false, message: err.message });
 //   }
 // };
-export const getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find().select("-password");
+// export const getAllUsers = async (req, res) => {
+//     try {
+//         const users = await User.find().select("-password");
 
-        const usersWithStatus = users.map((user) => {
-            const userObj = user.toObject();
-            if (userObj.role === "driver") {
-                const idStr = user._id.toString();
-                userObj.isOnline = driverLocations.has(idStr);
-                userObj.currentLocation = driverLocations.get(idStr) || null;
-            }
-            return userObj;
-        });
+//         const usersWithStatus = users.map((user) => {
+//             const userObj = user.toObject();
+//             if (userObj.role === "driver") {
+//                 const idStr = user._id.toString();
+//                 userObj.isOnline = driverLocations.has(idStr);
+//                 userObj.currentLocation = driverLocations.get(idStr) || null;
+//             }
+//             return userObj;
+//         });
 
-        res.status(200).json({ success: true, users: usersWithStatus });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-};
-
+//         res.status(200).json({ success: true, users: usersWithStatus });
+//     } catch (err) {
+//         res.status(500).json({ success: false, message: err.message });
+//     }
+// };
 export const getOnlineDriverLocations = async (req, res) => {
     try {
         const driverIds = Array.from(driverLocations.keys());
