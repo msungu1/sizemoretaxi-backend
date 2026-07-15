@@ -221,14 +221,6 @@ export const deleteUserPermanently = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-// export const getOnlineDriverIds = async (req, res) => {
-//   try {
-//     const onlineDriverIds = Array.from(driverLocations.keys());
-//     res.status(200).json({ success: true, onlineDriverIds });
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
 // export const getAllUsers = async (req, res) => {
 //     try {
 //         const users = await User.find().select("-password");
