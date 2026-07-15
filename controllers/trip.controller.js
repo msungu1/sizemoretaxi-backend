@@ -218,6 +218,11 @@ const initialStatus = vehicleType?.toLowerCase() === "chopper" ? "pending" : "re
             isRiding: true
         });
 
+        console.log("========== BEFORE EMIT ==========");
+console.log("Trip:", newTrip._id.toString());
+console.log("Vehicle:", vehicleType);
+console.log("Status:", newTrip.status);
+
         emitToAdmin("ride_requested", {
             tripId: newTrip._id.toString(),
             rider: {
@@ -234,6 +239,7 @@ const initialStatus = vehicleType?.toLowerCase() === "chopper" ? "pending" : "re
             duration: route.durationText,
             scheduledTime: sched,
         });
+        console.log("========== AFTER EMIT ==========");
 emitToUser(riderId, "trip_created", {
   tripId: newTrip._id,
 });
