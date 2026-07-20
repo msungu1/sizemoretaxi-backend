@@ -908,6 +908,7 @@ export const acceptTripByAdmin = async (req, res) => {
         //     status: "accepted",
         //     message: "Ride accepted. Finding a driver..."
         // };
+                const isChopper = trip.vehicleType?.toLowerCase() === "chopper";
         const payload = {
             tripId: trip._id.toString(),
             status: "accepted",
