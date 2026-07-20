@@ -903,10 +903,17 @@ export const acceptTripByAdmin = async (req, res) => {
             return response(res, 400, "Trip not found.");
         }
 
+        // const payload = {
+        //     tripId: trip._id.toString(),
+        //     status: "accepted",
+        //     message: "Ride accepted. Finding a driver..."
+        // };
         const payload = {
             tripId: trip._id.toString(),
             status: "accepted",
-            message: "Ride accepted. Finding a driver..."
+            message: isChopper
+                ? "Ride accepted. Our team will call you shortly."
+                : "Ride accepted. Finding a driver..."
         };
 
         // 🚀 notify rider (WAITING STATE)
