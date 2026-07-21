@@ -400,6 +400,16 @@ const generateTokens = (user) => {
 const response = (res, status, message, data = null) => {
   return res.status(status).json({ status, message, data });
 };
+
+// Twilio requires E.164 format (e.g. +254712345678). The app stores phone
+// numbers as bare digits (e.g. 0712345678 or 712345678), so convert before
+// dialing out. Adjust the country code if you support numbers outside Kenya.
+const toE164 = (phone) => {
+  const digits = String(phone).replace(/[^0-9]/g, "");
+  if (digits.startsWith("254")) return `+${digits}`;
+  if (digits.startsWith("0")) return `+254${digits.slice(1)}`;
+  return `+254${digits}`;
+};
 export const registerUser = async (req, res) => {
   const {
     name,
@@ -482,11 +492,38 @@ export const registerUser = async (req, res) => {
 
     const user = await User.create(userData);
 
-    await sendEmail(userData.email, registrationOTP);
+    // OTP goes to the phone for verification
+    await sendSMS(
+      toE164(user.phone),
+      `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    );
+
+    // A warm welcome/success confirmation goes to their email
+    await sendEmail(
+      user.email,
+      "Welcome to SizemoreTaxi 🚕",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE; margin-bottom: 4px;">Welcome aboard, ${user.name}! 🎉</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            Thanks for creating your SizemoreTaxi account. We're excited to have you with us.
+          </p>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            We've sent a verification code to your phone number ending in
+            <strong>${user.phone.slice(-4)}</strong>. Enter it in the app to finish
+            verifying your account.
+          </p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            If you didn't create this account, you can safely ignore this email.
+          </p>
+        </div>
+      `
+    );
+
     // TODO: fix twilio account
     // sendSMS(userData.phone, registrationOTP);
 
-    return response(res, 201, "User registered. OTP sent.");
+    return response(res, 201, "User registered. OTP sent to your phone.");
   } catch (err) {
     console.error(err);
     return response(res, 500, "Internal server error.");
@@ -582,8 +619,10 @@ export const resendOtp = async (req, res) => {
     user.registrationOTPExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    await sendEmail(user.email, registrationOTP);
-    await sendSMS(user.phone, registrationOTP);
+    await sendSMS(
+      toE164(user.phone),
+      `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    );
 
     return response(res, 200, "OTP resent.");
   } catch (err) {
@@ -612,8 +651,29 @@ export const forgotPassword = async (req, res) => {
     user.passwordResetOTPExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    if (identifier.includes("@")) await sendEmail(user.email, passwordResetOTP);
-    else await sendSMS(user.phone, passwordResetOTP);
+    if (identifier.includes("@")) {
+      await sendEmail(
+        user.email,
+        "Reset your SizemoreTaxi password",
+        `
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+            <h2 style="color: #22D3EE;">Password reset code</h2>
+            <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+              Use the code below to reset your password. It expires in 10 minutes.
+            </p>
+            <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #22D3EE;">${passwordResetOTP}</p>
+            <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+              If you didn't request this, you can safely ignore this email.
+            </p>
+          </div>
+        `
+      );
+    } else {
+      await sendSMS(
+        toE164(user.phone),
+        `Your SizemoreTaxi password reset code is ${passwordResetOTP}. It expires in 10 minutes.`
+      );
+    }
 
     return response(res, 200, "OTP sent.");
   } catch (err) {
@@ -664,7 +724,7 @@ export const changePhone = async (req, res) => {
     user.newPhonePending = newPhone;
     await user.save();
 
-    await sendSMS(newPhone, otp);
+    await sendSMS(toE164(newPhone), `Your SizemoreTaxi phone-change verification code is ${otp}. It expires in 10 minutes.`);
 
     return response(res, 200, "OTP sent to new phone.");
   } catch (err) {
@@ -721,7 +781,19 @@ export const changeEmail = async (req, res) => {
     user.newEmailPending = newEmail;
     await user.save();
 
-    await sendEmail(newEmail, otp);
+    await sendEmail(
+      newEmail,
+      "Confirm your new email address",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE;">Confirm your email change</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            Use the code below to confirm this is your new email address. It expires in 10 minutes.
+          </p>
+          <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #22D3EE;">${otp}</p>
+        </div>
+      `
+    );
 
     return response(res, 200, "OTP sent to new email.");
   } catch (err) {
