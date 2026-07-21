@@ -492,13 +492,28 @@ export const registerUser = async (req, res) => {
 
     const user = await User.create(userData);
 
-    // OTP goes to the phone for verification
-    await sendSMS(
-      toE164(user.phone),
-      `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    // INTERIM: OTP goes out by email while Twilio's Alpha Sender ID
+    // registration for Kenya is pending (long codes aren't supported for
+    // SMS to Kenya). Switch this back to sendSMS once that's approved —
+    // see the commented-out call below.
+    await sendEmail(
+      user.email,
+      "Your SizemoreTaxi verification code",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE; margin-bottom: 4px;">Verify your account</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            Hi ${user.name}, use the code below to verify your SizemoreTaxi account. It expires in 10 minutes.
+          </p>
+          <p style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #22D3EE; margin: 20px 0;">${registrationOTP}</p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            If you didn't create this account, you can safely ignore this email.
+          </p>
+        </div>
+      `
     );
 
-    // A warm welcome/success confirmation goes to their email
+    // A warm welcome/success confirmation follows right after
     await sendEmail(
       user.email,
       "Welcome to SizemoreTaxi 🚕",
@@ -509,9 +524,8 @@ export const registerUser = async (req, res) => {
             Thanks for creating your SizemoreTaxi account. We're excited to have you with us.
           </p>
           <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
-            We've sent a verification code to your phone number ending in
-            <strong>${user.phone.slice(-4)}</strong>. Enter it in the app to finish
-            verifying your account.
+            Check your inbox for the verification code we just sent — enter it in the
+            app to finish verifying your account.
           </p>
           <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
             If you didn't create this account, you can safely ignore this email.
@@ -520,10 +534,13 @@ export const registerUser = async (req, res) => {
       `
     );
 
-    // TODO: fix twilio account
-    // sendSMS(userData.phone, registrationOTP);
+    // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
+    // await sendSMS(
+    //   toE164(user.phone),
+    //   `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    // );
 
-    return response(res, 201, "User registered. OTP sent to your phone.");
+    return response(res, 201, "User registered. Check your email for your verification code.");
   } catch (err) {
     console.error(err);
     return response(res, 500, "Internal server error.");
@@ -619,10 +636,29 @@ export const resendOtp = async (req, res) => {
     user.registrationOTPExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    await sendSMS(
-      toE164(user.phone),
-      `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    // INTERIM: resend via email too, same reason as registerUser above.
+    await sendEmail(
+      user.email,
+      "Your SizemoreTaxi verification code",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE; margin-bottom: 4px;">Here's your new code</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            Hi ${user.name}, use the code below to verify your SizemoreTaxi account. It expires in 10 minutes.
+          </p>
+          <p style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #22D3EE; margin: 20px 0;">${registrationOTP}</p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `
     );
+
+    // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
+    // await sendSMS(
+    //   toE164(user.phone),
+    //   `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+    // );
 
     return response(res, 200, "OTP resent.");
   } catch (err) {
@@ -651,29 +687,30 @@ export const forgotPassword = async (req, res) => {
     user.passwordResetOTPExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    if (identifier.includes("@")) {
-      await sendEmail(
-        user.email,
-        "Reset your SizemoreTaxi password",
-        `
-          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
-            <h2 style="color: #22D3EE;">Password reset code</h2>
-            <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
-              Use the code below to reset your password. It expires in 10 minutes.
-            </p>
-            <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #22D3EE;">${passwordResetOTP}</p>
-            <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
-              If you didn't request this, you can safely ignore this email.
-            </p>
-          </div>
-        `
-      );
-    } else {
-      await sendSMS(
-        toE164(user.phone),
-        `Your SizemoreTaxi password reset code is ${passwordResetOTP}. It expires in 10 minutes.`
-      );
-    }
+    await sendEmail(
+      user.email,
+      "Reset your SizemoreTaxi password",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE;">Password reset code</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            Use the code below to reset your password. It expires in 10 minutes.
+          </p>
+          <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #22D3EE;">${passwordResetOTP}</p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `
+    );
+
+    // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
+    // if (!identifier.includes("@")) {
+    //   await sendSMS(
+    //     toE164(user.phone),
+    //     `Your SizemoreTaxi password reset code is ${passwordResetOTP}. It expires in 10 minutes.`
+    //   );
+    // }
 
     return response(res, 200, "OTP sent.");
   } catch (err) {
@@ -724,9 +761,28 @@ export const changePhone = async (req, res) => {
     user.newPhonePending = newPhone;
     await user.save();
 
-    await sendSMS(toE164(newPhone), `Your SizemoreTaxi phone-change verification code is ${otp}. It expires in 10 minutes.`);
+    await sendEmail(
+      user.email,
+      "Confirm your phone number change",
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
+          <h2 style="color: #22D3EE;">Confirm your new phone number</h2>
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+            We received a request to change your SizemoreTaxi phone number to
+            <strong>${newPhone}</strong>. Use the code below to confirm it. It expires in 10 minutes.
+          </p>
+          <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #22D3EE;">${otp}</p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `
+    );
 
-    return response(res, 200, "OTP sent to new phone.");
+    // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
+    // await sendSMS(toE164(newPhone), `Your SizemoreTaxi phone-change verification code is ${otp}. It expires in 10 minutes.`);
+
+    return response(res, 200, "OTP sent to your email.");
   } catch (err) {
     console.error(err);
     return response(res, 500, "Internal server error.");
