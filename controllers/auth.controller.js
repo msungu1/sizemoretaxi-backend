@@ -410,6 +410,123 @@ const toE164 = (phone) => {
   if (digits.startsWith("0")) return `+254${digits.slice(1)}`;
   return `+254${digits}`;
 };
+// export const registerUser = async (req, res) => {
+//   const {
+//     name,
+//     email,
+//     phone,
+//     password,
+//     role,
+//     carModel,
+//     carNumber,
+//     carType,
+//     licenseNumber,
+//     idNumber
+//   } = req.body;
+
+//   const allowedCarTypes = ["Chopper", "Comfort", "Business", "Premium"];
+
+//   if (!name || !email || !phone || !password)
+//     return response(res, 400, "All fields are required.");
+
+//   // req.files comes from multer's upload.fields([...]) — each key is an array of files
+//   const files = req.files || {};
+//   const driverPhotoFile = files.driverPhoto?.[0];
+//   const licensePhotoFile = files.licensePhoto?.[0];
+//   const nationalIdPhotoFile = files.nationalIdPhoto?.[0];
+//   const vehiclePhotoFile = files.vehiclePhoto?.[0];
+
+//   // ✅ If registering as a driver, validate driver-specific fields
+//   if (role === "driver") {
+//     if (!carModel || !carNumber || !carType || !licenseNumber || !idNumber) {
+//       return response(res, 400, "All driver vehicle and ID details are required.");
+//     }
+
+//     if (!allowedCarTypes.includes(carType)) {
+//       return response(res, 400, `carType must be one of: ${allowedCarTypes.join(", ")}`);
+//     }
+
+//     // TEMPORARILY DISABLED: photo uploads are turned off on the client for
+//     // now, so we skip this check. UNCOMMENT to re-enable once the app is
+//     // sending driverPhoto / licensePhoto / nationalIdPhoto again.
+//     // if (!driverPhotoFile || !licensePhotoFile || !nationalIdPhotoFile) {
+//     //   return response(res, 400, "Driver photo, license photo, and national ID photo are required.");
+//     // }
+//   }
+
+//   try {
+//     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+//     if (existingUser)
+//       return response(res, 409, "Email or phone already exists.");
+
+//     const hashedPassword = await bcrypt.hash(password, 12);
+//     const registrationOTP = Math.floor(100000 + Math.random() * 900000).toString();
+//     const registrationOTPExpires = Date.now() + 10 * 60 * 1000;
+
+//     const userData = {
+//       name,
+//       email,
+//       phone,
+//       password: hashedPassword,
+//       role,
+//       registrationOTP,
+//       registrationOTPExpires,
+//     };
+
+//     // ✅ Add driver-specific fields if applicable
+//     if (role === "driver") {
+//       userData.carModel = carModel;
+//       userData.carNumber = carNumber;
+//       userData.carType = carType;
+//       userData.licenseNumber = licenseNumber;
+//       userData.idNumber = idNumber;
+
+//       // CloudinaryStorage attaches the hosted URL at file.path
+//       // TEMPORARILY DISABLED along with the check above — only attach these
+//       // if the files actually exist, since uploads are currently off.
+//       if (driverPhotoFile) userData.profilePicture = driverPhotoFile.path;
+//       if (licensePhotoFile) userData.licensePhotoUrl = licensePhotoFile.path;
+//       if (nationalIdPhotoFile) userData.nationalIdPhotoUrl = nationalIdPhotoFile.path;
+//       if (vehiclePhotoFile) userData.vehiclePhotoUrl = vehiclePhotoFile.path;
+//     }
+
+//     console.time("Registration");
+//    const user = await User.create(userData);
+
+// response(
+//     res,
+//     201,
+//     "User registered. Check your email for your verification code."
+// );
+
+// // Send emails AFTER responding
+// sendEmail(
+//     user.email,
+//     "Your SizemoreTaxi verification code",
+//     otpHtml
+// ).catch(console.error);
+
+// sendEmail(
+//     user.email,
+//     "Welcome to SizemoreTaxi 🚕",
+//     welcomeHtml
+// ).catch(console.error);
+
+//     // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
+//     // await sendSMS(
+//     //   toE164(user.phone),
+//     //   `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
+//     // );
+
+//     return response(res, 201, "User registered. Check your email for your verification code.");
+//   } catch (err) {
+//     console.error(err);
+//     return response(res, 500, "Internal server error.");
+//   }
+// };
+
+// Verify otp for ur account
+
 export const registerUser = async (req, res) => {
   const {
     name,
@@ -421,46 +538,61 @@ export const registerUser = async (req, res) => {
     carNumber,
     carType,
     licenseNumber,
-    idNumber
+    idNumber,
   } = req.body;
 
   const allowedCarTypes = ["Chopper", "Comfort", "Business", "Premium"];
 
-  if (!name || !email || !phone || !password)
+  if (!name || !email || !phone || !password) {
     return response(res, 400, "All fields are required.");
+  }
 
-  // req.files comes from multer's upload.fields([...]) — each key is an array of files
   const files = req.files || {};
   const driverPhotoFile = files.driverPhoto?.[0];
   const licensePhotoFile = files.licensePhoto?.[0];
   const nationalIdPhotoFile = files.nationalIdPhoto?.[0];
   const vehiclePhotoFile = files.vehiclePhoto?.[0];
 
-  // ✅ If registering as a driver, validate driver-specific fields
   if (role === "driver") {
     if (!carModel || !carNumber || !carType || !licenseNumber || !idNumber) {
-      return response(res, 400, "All driver vehicle and ID details are required.");
+      return response(
+        res,
+        400,
+        "All driver vehicle and ID details are required."
+      );
     }
 
     if (!allowedCarTypes.includes(carType)) {
-      return response(res, 400, `carType must be one of: ${allowedCarTypes.join(", ")}`);
+      return response(
+        res,
+        400,
+        `carType must be one of: ${allowedCarTypes.join(", ")}`
+      );
     }
-
-    // TEMPORARILY DISABLED: photo uploads are turned off on the client for
-    // now, so we skip this check. UNCOMMENT to re-enable once the app is
-    // sending driverPhoto / licensePhoto / nationalIdPhoto again.
-    // if (!driverPhotoFile || !licensePhotoFile || !nationalIdPhotoFile) {
-    //   return response(res, 400, "Driver photo, license photo, and national ID photo are required.");
-    // }
   }
 
   try {
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser)
-      return response(res, 409, "Email or phone already exists.");
+    console.time("Total Registration");
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const registrationOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone }],
+    });
+
+    if (existingUser) {
+      return response(res, 409, "Email or phone already exists.");
+    }
+
+    console.time("Password Hash");
+
+    // Faster than 12 but still secure
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    console.timeEnd("Password Hash");
+
+    const registrationOTP = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString();
+
     const registrationOTPExpires = Date.now() + 10 * 60 * 1000;
 
     const userData = {
@@ -473,7 +605,6 @@ export const registerUser = async (req, res) => {
       registrationOTPExpires,
     };
 
-    // ✅ Add driver-specific fields if applicable
     if (role === "driver") {
       userData.carModel = carModel;
       userData.carNumber = carNumber;
@@ -481,51 +612,152 @@ export const registerUser = async (req, res) => {
       userData.licenseNumber = licenseNumber;
       userData.idNumber = idNumber;
 
-      // CloudinaryStorage attaches the hosted URL at file.path
-      // TEMPORARILY DISABLED along with the check above — only attach these
-      // if the files actually exist, since uploads are currently off.
-      if (driverPhotoFile) userData.profilePicture = driverPhotoFile.path;
-      if (licensePhotoFile) userData.licensePhotoUrl = licensePhotoFile.path;
-      if (nationalIdPhotoFile) userData.nationalIdPhotoUrl = nationalIdPhotoFile.path;
-      if (vehiclePhotoFile) userData.vehiclePhotoUrl = vehiclePhotoFile.path;
+      if (driverPhotoFile)
+        userData.profilePicture = driverPhotoFile.path;
+
+      if (licensePhotoFile)
+        userData.licensePhotoUrl = licensePhotoFile.path;
+
+      if (nationalIdPhotoFile)
+        userData.nationalIdPhotoUrl = nationalIdPhotoFile.path;
+
+      if (vehiclePhotoFile)
+        userData.vehiclePhotoUrl = vehiclePhotoFile.path;
     }
 
-    console.time("Registration");
-   const user = await User.create(userData);
+    console.time("Create User");
 
-response(
-    res,
-    201,
-    "User registered. Check your email for your verification code."
-);
+    const user = await User.create(userData);
 
-// Send emails AFTER responding
-sendEmail(
-    user.email,
-    "Your SizemoreTaxi verification code",
-    otpHtml
-).catch(console.error);
+    console.timeEnd("Create User");
 
-sendEmail(
-    user.email,
-    "Welcome to SizemoreTaxi 🚕",
-    welcomeHtml
-).catch(console.error);
+    console.timeEnd("Total Registration");
 
-    // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
-    // await sendSMS(
-    //   toE164(user.phone),
-    //   `Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.`
-    // );
+    // Respond immediately
+    response(
+      res,
+      201,
+      "User registered successfully. Please check your email for your verification code."
+    );
 
-    return response(res, 201, "User registered. Check your email for your verification code.");
+    // Send email in the background
+    (async () => {
+      try {
+        console.time("Send Email");
+
+        await sendEmail(
+          user.email,
+          "🎉 Welcome to SizemoreTaxi - Verify Your Account",
+          `
+          <div style="
+              font-family:Arial,sans-serif;
+              max-width:600px;
+              margin:auto;
+              background:#0F172A;
+              color:white;
+              border-radius:18px;
+              overflow:hidden;
+          ">
+
+            <div style="background:#22D3EE;padding:20px;text-align:center;">
+              <h1 style="margin:0;color:#0F172A;">
+                🚕 Welcome to SizemoreTaxi
+              </h1>
+            </div>
+
+            <div style="padding:30px;">
+
+              <h2>Hello ${user.name}, 👋</h2>
+
+              <p style="line-height:1.7;font-size:16px;">
+                Thank you for creating your
+                <strong>SizemoreTaxi</strong> account.
+              </p>
+
+              <p style="line-height:1.7;">
+                To activate your account, use the verification code below.
+              </p>
+
+              <div style="
+                  margin:35px auto;
+                  width:220px;
+                  background:#22D3EE;
+                  color:#0F172A;
+                  padding:18px;
+                  border-radius:12px;
+                  text-align:center;
+                  font-size:34px;
+                  font-weight:bold;
+                  letter-spacing:8px;
+              ">
+                ${registrationOTP}
+              </div>
+
+              <p style="color:#CBD5E1;">
+                ⏰ This code expires in
+                <strong>10 minutes</strong>.
+              </p>
+
+              <hr style="border:none;border-top:1px solid #334155;margin:30px 0;">
+
+              <h3>Why SizemoreTaxi?</h3>
+
+              <ul style="line-height:2;">
+                <li>✅ Safe & Secure Rides</li>
+                <li>✅ Fast Driver Matching</li>
+                <li>✅ Real-time Trip Tracking</li>
+                <li>✅ Emergency Assistance</li>
+              </ul>
+
+              <p style="margin-top:30px;">
+                If you didn't create this account, you can safely ignore this email.
+              </p>
+
+            </div>
+
+            <div style="
+                background:#111827;
+                padding:18px;
+                text-align:center;
+                color:#94A3B8;
+                font-size:13px;
+            ">
+              © ${new Date().getFullYear()} SizemoreTaxi
+              <br>
+              Safe • Reliable • Fast
+            </div>
+
+          </div>
+          `
+        );
+
+        console.timeEnd("Send Email");
+      } catch (emailError) {
+        console.error("Email Error:", emailError);
+      }
+    })();
+
+    // Uncomment when Twilio is ready
+    /*
+    (async () => {
+      try {
+        await sendSMS(
+          toE164(user.phone),
+          \`Your SizemoreTaxi verification code is ${registrationOTP}. It expires in 10 minutes.\`
+        );
+      } catch (smsErr) {
+        console.error("SMS Error:", smsErr);
+      }
+    })();
+    */
   } catch (err) {
     console.error(err);
-    return response(res, 500, "Internal server error.");
+
+    if (!res.headersSent) {
+      return response(res, 500, "Internal server error.");
+    }
   }
 };
-
-// Verify otp for ur account
 export const verifyOtp = async (req, res) => {
   const { userId, otp } = req.body;
   if (!userId || !otp) return response(res, 400, "User ID and OTP required.");
