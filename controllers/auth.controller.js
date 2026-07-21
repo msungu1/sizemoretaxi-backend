@@ -490,49 +490,27 @@ export const registerUser = async (req, res) => {
       if (vehiclePhotoFile) userData.vehiclePhotoUrl = vehiclePhotoFile.path;
     }
 
-    const user = await User.create(userData);
+    console.time("Registration");
+   const user = await User.create(userData);
 
-    // INTERIM: OTP goes out by email while Twilio's Alpha Sender ID
-    // registration for Kenya is pending (long codes aren't supported for
-    // SMS to Kenya). Switch this back to sendSMS once that's approved —
-    // see the commented-out call below.
-    await sendEmail(
-      user.email,
-      "Your SizemoreTaxi verification code",
-      `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
-          <h2 style="color: #22D3EE; margin-bottom: 4px;">Verify your account</h2>
-          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
-            Hi ${user.name}, use the code below to verify your SizemoreTaxi account. It expires in 10 minutes.
-          </p>
-          <p style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #22D3EE; margin: 20px 0;">${registrationOTP}</p>
-          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
-            If you didn't create this account, you can safely ignore this email.
-          </p>
-        </div>
-      `
-    );
+response(
+    res,
+    201,
+    "User registered. Check your email for your verification code."
+);
 
-    // A warm welcome/success confirmation follows right after
-    await sendEmail(
-      user.email,
-      "Welcome to SizemoreTaxi 🚕",
-      `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0F172A; color: #ffffff; border-radius: 16px;">
-          <h2 style="color: #22D3EE; margin-bottom: 4px;">Welcome aboard, ${user.name}! 🎉</h2>
-          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
-            Thanks for creating your SizemoreTaxi account. We're excited to have you with us.
-          </p>
-          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
-            Check your inbox for the verification code we just sent — enter it in the
-            app to finish verifying your account.
-          </p>
-          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
-            If you didn't create this account, you can safely ignore this email.
-          </p>
-        </div>
-      `
-    );
+// Send emails AFTER responding
+sendEmail(
+    user.email,
+    "Your SizemoreTaxi verification code",
+    otpHtml
+).catch(console.error);
+
+sendEmail(
+    user.email,
+    "Welcome to SizemoreTaxi 🚕",
+    welcomeHtml
+).catch(console.error);
 
     // Re-enable once Twilio's Kenya Alpha Sender ID is approved:
     // await sendSMS(
